@@ -1,0 +1,6 @@
+{
+  "name": "DocuVerse",
+  "description": "DocuVerse – PDF & All Document Reader: offline-first PDF reader, smart scanner, converter, annotator, security vault, and AI assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
