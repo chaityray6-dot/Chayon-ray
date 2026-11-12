@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -18,15 +22,23 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallMerge
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -36,18 +48,22 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.local.DocumentEntity
 import com.example.ui.components.DocumentActionsSheet
@@ -76,6 +92,7 @@ fun FilesScreen(
     onSortChange: (SortOption) -> Unit,
     onToggleGridView: () -> Unit,
     onImportClick: () -> Unit,
+    onImportFolderClick: () -> Unit = {},
     onCleanDuplicates: () -> Unit,
     onVerifyPin: (String) -> Boolean,
     onRequestBiometric: () -> Unit,
@@ -86,11 +103,33 @@ fun FilesScreen(
     onRenameDocument: (DocumentEntity, String) -> Unit,
     onShareDocument: (DocumentEntity) -> Unit,
     onToggleVault: (DocumentEntity) -> Unit,
-    onDeleteDocument: (DocumentEntity) -> Unit
+    onDeleteDocument: (DocumentEntity) -> Unit,
+    onOpenDocumentsSearch: (String) -> Unit = {},
+    onMergeSelected: (List<DocumentEntity>) -> Unit = {},
+    onShareSelected: (List<DocumentEntity>) -> Unit = {},
+    onStarSelected: (List<DocumentEntity>, Boolean) -> Unit = { _, _ -> },
+    onDeleteSelected: (List<DocumentEntity>) -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var selectedActionDoc by remember { mutableStateOf<DocumentEntity?>(null) }
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
+
+    fun exitSelectionMode() {
+        isSelectionMode = false
+        selectedIds = emptySet()
+    }
+
+    LaunchedEffect(documents) {
+        val visibleIds = documents.map { it.id }.toSet()
+        selectedIds = selectedIds.intersect(visibleIds)
+    }
+
+    BackHandler(enabled = isSelectionMode) {
+        exitSelectionMode()
+    }
 
     if (filterOption == FileFilterOption.VAULT && !isVaultUnlocked && isPinConfigured) {
         PinLockGateScreen(
@@ -104,34 +143,151 @@ fun FilesScreen(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    val selectedDocs = remember(documents, selectedIds) {
+        documents.filter { it.id in selectedIds }
+    }
+    val selectedPdfDocs = remember(selectedDocs) {
+        selectedDocs.filter { it.docType == "PDF" || it.docType == "SCANNED_PDF" }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text(
-                text = strings.navFiles,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { sortMenuExpanded = true },
-                    modifier = Modifier.minimumInteractiveComponentSize().testTag("files_sort_btn")
+            if (isSelectionMode) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort files")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { exitSelectionMode() },
+                                modifier = Modifier.minimumInteractiveComponentSize().testTag("files_exit_selection_btn")
+                            ) {
+                                Icon(Icons.Filled.Close, contentDescription = "Exit selection mode")
+                            }
+                            Text(
+                                text = "${selectedDocs.size} selected",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        val allSelected = documents.isNotEmpty() && selectedIds.size == documents.size
+                        TextButton(
+                            onClick = {
+                                selectedIds = if (allSelected) emptySet() else documents.map { it.id }.toSet()
+                            },
+                            modifier = Modifier.testTag("files_select_all_btn")
+                        ) {
+                            Text(if (allSelected) "Clear" else "Select All")
+                        }
+                    }
                 }
-                DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
-                    SortOption.entries.forEach { opt ->
-                        DropdownMenuItem(
-                            text = { Text(opt.label + if (opt == sortOption) " ✓" else "") },
-                            onClick = { onSortChange(opt); sortMenuExpanded = false }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = strings.navFiles,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onOpenDocumentsSearch(searchQuery) },
+                            modifier = Modifier.minimumInteractiveComponentSize().testTag("files_deep_search_btn")
+                        ) {
+                            Icon(Icons.Filled.Search, contentDescription = strings.documentsSearch)
+                        }
+                        IconButton(
+                            onClick = onImportFolderClick,
+                            modifier = Modifier.minimumInteractiveComponentSize().testTag("files_import_folder_btn")
+                        ) {
+                            Icon(Icons.Filled.FolderOpen, contentDescription = strings.importFolder)
+                        }
+                        Button(onClick = onImportClick, modifier = Modifier.testTag("files_import_btn")) {
+                            Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.importDoc)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchChange,
+                placeholder = { Text(strings.searchDocsHint) },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onSearchChange("") }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().testTag("files_search_input")
+            )
+
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(FileFilterOption.entries) { opt ->
+                        FilterChip(
+                            selected = opt == filterOption,
+                            onClick = {
+                                if (opt == FileFilterOption.VAULT && !isPinConfigured) {
+                                    onVaultUnlocked()
+                                }
+                                onFilterChange(opt)
+                            },
+                            label = { Text(opt.label) },
+                            leadingIcon = if (opt == FileFilterOption.VAULT) {
+                                { Icon(Icons.Filled.Lock, contentDescription = null) }
+                            } else null,
+                            modifier = Modifier.testTag("filter_${opt.name.lowercase()}")
                         )
+                    }
+                }
+                Box {
+                    IconButton(
+                        onClick = { sortMenuExpanded = true },
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("files_sort_btn")
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort files")
+                    }
+                    DropdownMenu(expanded = sortMenuExpanded, onDismissRequest = { sortMenuExpanded = false }) {
+                        SortOption.entries.forEach { opt ->
+                            DropdownMenuItem(
+                                text = { Text(opt.label + if (opt == sortOption) " ✓" else "") },
+                                onClick = { onSortChange(opt); sortMenuExpanded = false }
+                            )
+                        }
                     }
                 }
                 IconButton(
@@ -143,118 +299,174 @@ fun FilesScreen(
                         contentDescription = "Toggle grid or list view"
                     )
                 }
-                Button(onClick = onImportClick, modifier = Modifier.testTag("files_import_btn")) {
-                    Icon(Icons.Filled.FileOpen, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(strings.importDoc)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchChange,
-            placeholder = { Text(strings.searchDocsHint) },
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { onSearchChange("") }) {
-                        Icon(Icons.Filled.Close, contentDescription = "Clear")
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().testTag("files_search_input")
-        )
-
-        Spacer(Modifier.height(10.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(FileFilterOption.entries) { opt ->
-                FilterChip(
-                    selected = opt == filterOption,
-                    onClick = {
-                        if (opt == FileFilterOption.VAULT && !isPinConfigured) {
-                            onVaultUnlocked()
-                        }
-                        onFilterChange(opt)
-                    },
-                    label = { Text(opt.label) },
-                    leadingIcon = if (opt == FileFilterOption.VAULT) {
-                        { Icon(Icons.Filled.Lock, contentDescription = null) }
-                    } else null,
-                    modifier = Modifier.testTag("filter_${opt.name.lowercase()}")
-                )
-            }
-        }
-
-        if (duplicateGroupsCount > 0) {
-            Spacer(Modifier.height(8.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.14f)),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = WarningAmber)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "$duplicateGroupsCount duplicate document group(s) detected",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium
+                if (documents.isNotEmpty()) {
+                    IconButton(
+                        onClick = {
+                            if (isSelectionMode) exitSelectionMode() else isSelectionMode = true
+                        },
+                        modifier = Modifier.minimumInteractiveComponentSize().testTag("files_select_mode_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Checklist,
+                            contentDescription = "Select multiple documents",
+                            tint = if (isSelectionMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    TextButton(onClick = onCleanDuplicates, modifier = Modifier.testTag("clean_duplicates_btn")) {
-                        Text("Remove")
+                }
+            }
+
+            if (duplicateGroupsCount > 0) {
+                Spacer(Modifier.height(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = WarningAmber.copy(alpha = 0.14f)),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = WarningAmber)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "$duplicateGroupsCount duplicate document group(s) detected",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        TextButton(onClick = onCleanDuplicates, modifier = Modifier.testTag("clean_duplicates_btn")) {
+                            Text("Remove")
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            if (documents.isEmpty()) {
+                EmptyDocumentsState(
+                    title = if (filterOption == FileFilterOption.VAULT) "Private Vault is empty" else strings.emptyDocsTitle,
+                    subtitle = if (filterOption == FileFilterOption.VAULT) {
+                        "Move sensitive PDFs into the Private Vault from any document's options menu."
+                    } else strings.emptyDocsSubtitle,
+                    actionLabel = strings.importDoc,
+                    onAction = onImportClick
+                )
+            } else if (isGridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 156.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(documents, key = { it.id }) { doc ->
+                        DocumentGridCard(
+                            doc = doc,
+                            selectionMode = isSelectionMode,
+                            isSelected = doc.id in selectedIds,
+                            onOpen = {
+                                if (isSelectionMode) {
+                                    selectedIds = if (doc.id in selectedIds) selectedIds - doc.id else selectedIds + doc.id
+                                } else {
+                                    onOpenDocument(doc)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedIds = setOf(doc.id)
+                                }
+                            },
+                            onToggleStar = { onToggleStar(doc) },
+                            onMoreClick = { selectedActionDoc = doc }
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(documents, key = { it.id }) { doc ->
+                        DocumentListCard(
+                            doc = doc,
+                            selectionMode = isSelectionMode,
+                            isSelected = doc.id in selectedIds,
+                            onOpen = {
+                                if (isSelectionMode) {
+                                    selectedIds = if (doc.id in selectedIds) selectedIds - doc.id else selectedIds + doc.id
+                                } else {
+                                    onOpenDocument(doc)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedIds = setOf(doc.id)
+                                }
+                            },
+                            onToggleStar = { onToggleStar(doc) },
+                            onMoreClick = { selectedActionDoc = doc }
+                        )
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(10.dp))
-        if (documents.isEmpty()) {
-            EmptyDocumentsState(
-                title = if (filterOption == FileFilterOption.VAULT) "Private Vault is empty" else strings.emptyDocsTitle,
-                subtitle = if (filterOption == FileFilterOption.VAULT) {
-                    "Move sensitive PDFs into the Private Vault from any document's options menu."
-                } else strings.emptyDocsSubtitle,
-                actionLabel = strings.importDoc,
-                onAction = onImportClick
-            )
-        } else if (isGridView) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 156.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                modifier = Modifier.fillMaxSize()
+        AnimatedVisibility(visible = isSelectionMode) {
+            Surface(
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                items(documents, key = { it.id }) { doc ->
-                    DocumentGridCard(
-                        doc = doc,
-                        onOpen = { onOpenDocument(doc) },
-                        onToggleStar = { onToggleStar(doc) },
-                        onMoreClick = { selectedActionDoc = doc }
+                val allStarred = selectedDocs.isNotEmpty() && selectedDocs.all { it.isStarred }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BatchActionButton(
+                        icon = Icons.AutoMirrored.Filled.CallMerge,
+                        label = "Merge",
+                        enabled = selectedPdfDocs.size >= 2,
+                        tag = "batch_merge_btn",
+                        onClick = {
+                            onMergeSelected(selectedPdfDocs)
+                            exitSelectionMode()
+                        }
                     )
-                }
-            }
-        } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(documents, key = { it.id }) { doc ->
-                    DocumentListCard(
-                        doc = doc,
-                        onOpen = { onOpenDocument(doc) },
-                        onToggleStar = { onToggleStar(doc) },
-                        onMoreClick = { selectedActionDoc = doc }
+                    BatchActionButton(
+                        icon = Icons.Filled.Star,
+                        label = if (allStarred) "Unstar" else "Star",
+                        enabled = selectedDocs.isNotEmpty(),
+                        tag = "batch_star_btn",
+                        onClick = {
+                            onStarSelected(selectedDocs, !allStarred)
+                            exitSelectionMode()
+                        }
+                    )
+                    BatchActionButton(
+                        icon = Icons.Filled.Share,
+                        label = strings.share,
+                        enabled = selectedDocs.isNotEmpty(),
+                        tag = "batch_share_btn",
+                        onClick = {
+                            onShareSelected(selectedDocs)
+                            exitSelectionMode()
+                        }
+                    )
+                    BatchActionButton(
+                        icon = Icons.Filled.Delete,
+                        label = strings.delete,
+                        enabled = selectedDocs.isNotEmpty(),
+                        isDestructive = true,
+                        tag = "batch_delete_btn",
+                        onClick = { showBatchDeleteConfirm = true }
                     )
                 }
             }
@@ -272,5 +484,62 @@ fun FilesScreen(
             onToggleVault = { onToggleVault(doc) },
             onDelete = { onDeleteDocument(doc) }
         )
+    }
+
+    if (showBatchDeleteConfirm && selectedDocs.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteConfirm = false },
+            title = { Text("Delete ${selectedDocs.size} document(s)?") },
+            text = {
+                Text("Selected documents will be permanently removed from your Smart PDF Reader library.")
+            },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        showBatchDeleteConfirm = false
+                        onDeleteSelected(selectedDocs)
+                        exitSelectionMode()
+                    },
+                    modifier = Modifier.testTag("confirm_batch_delete_btn")
+                ) {
+                    Text(strings.delete)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteConfirm = false }) {
+                    Text(strings.cancel)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun BatchActionButton(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    tag: String,
+    isDestructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        isDestructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .minimumInteractiveComponentSize()
+            .testTag(tag)
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = label, tint = contentColor, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(2.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = contentColor, maxLines = 1)
+        }
     }
 }

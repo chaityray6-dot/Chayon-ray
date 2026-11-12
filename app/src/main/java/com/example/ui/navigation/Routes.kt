@@ -43,3 +43,6 @@ data class CompressSecurityRoute(val mode: String = "compress")
 
 @Serializable
 data object OcrToolRoute
+
+@Serializable
+data class DocumentsSearchRoute(val initialQuery: String = "")

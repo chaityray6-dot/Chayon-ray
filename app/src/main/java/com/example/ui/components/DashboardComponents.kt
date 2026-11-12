@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Slideshow
@@ -90,6 +91,7 @@ fun HomeFabMenuSheet(
     strings: AppStrings,
     onDismiss: () -> Unit,
     onImportClick: () -> Unit,
+    onImportFolderClick: () -> Unit = {},
     onOpenScanner: () -> Unit,
     onOpenImageToPdf: () -> Unit,
     onOpenWebAndNotes: () -> Unit
@@ -106,6 +108,11 @@ fun HomeFabMenuSheet(
                 headlineContent = { Text("Import PDF, Word, Excel, PPT, TXT") },
                 leadingContent = { Icon(Icons.Filled.FileOpen, contentDescription = null) },
                 modifier = Modifier.clickable { onDismiss(); onImportClick() }
+            )
+            ListItem(
+                headlineContent = { Text("${strings.importFolder} (Batch PDFs)") },
+                leadingContent = { Icon(Icons.Filled.FolderOpen, contentDescription = null) },
+                modifier = Modifier.clickable { onDismiss(); onImportFolderClick() }
             )
             ListItem(
                 headlineContent = { Text(strings.toolScanner) },

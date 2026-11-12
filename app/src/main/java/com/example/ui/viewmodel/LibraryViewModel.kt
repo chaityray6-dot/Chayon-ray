@@ -10,8 +10,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.DocumentEntity
 import com.example.data.local.PreferencesRepository
 import com.example.data.local.UserPreferences
+import com.example.data.repository.DocumentContentSearchResult
 import com.example.data.repository.DocumentRepository
 import com.example.data.security.VaultSecurityManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +51,10 @@ data class LibraryUiState(
     val isVaultUnlocked: Boolean = false,
     val isAppUnlocked: Boolean = false,
     val isImporting: Boolean = false,
+    val isSearchingContent: Boolean = false,
+    val deepSearchQuery: String = "",
+    val contentSearchResults: List<DocumentContentSearchResult> = emptyList(),
+    val recentSearchQueries: List<String> = emptyList(),
     val statusMessage: String? = null
 )
 
@@ -60,6 +67,7 @@ class LibraryViewModel(
 
     private val _uiState = MutableStateFlow(LibraryUiState())
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+    private var deepSearchJob: Job? = null
 
     val userPreferences: StateFlow<UserPreferences> = preferencesRepository.preferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserPreferences())
@@ -178,9 +186,41 @@ class LibraryViewModel(
         }
     }
 
+    fun importFolderTree(treeUri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            runCatching {
+                val result = repository.importDocumentsFromFolderTree(treeUri)
+                refreshStorageStats()
+                val msg = when {
+                    result.importedCount > 0 && result.failedCount > 0 ->
+                        "Imported ${result.importedCount} document(s) (${result.failedCount} skipped)"
+                    result.importedCount > 0 ->
+                        "Imported ${result.importedCount} document(s) from folder"
+                    else -> "No new supported documents found in folder"
+                }
+                _uiState.update { it.copy(isImporting = false, statusMessage = msg) }
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(isImporting = false, statusMessage = err.localizedMessage ?: "Folder import failed")
+                }
+            }
+        }
+    }
+
     fun toggleStar(doc: DocumentEntity) {
         viewModelScope.launch {
             repository.toggleStar(doc.id, !doc.isStarred)
+        }
+    }
+
+    fun setStarredForDocuments(docs: List<DocumentEntity>, starred: Boolean) {
+        if (docs.isEmpty()) return
+        viewModelScope.launch {
+            docs.forEach { repository.toggleStar(it.id, starred) }
+            _uiState.update {
+                it.copy(statusMessage = "${if (starred) "Starred" else "Unstarred"} ${docs.size} document(s)")
+            }
         }
     }
 
@@ -197,6 +237,35 @@ class LibraryViewModel(
             repository.deleteDocument(doc)
             refreshStorageStats()
             _uiState.update { it.copy(statusMessage = "Deleted \"${doc.title}\"") }
+        }
+    }
+
+    fun deleteDocuments(docs: List<DocumentEntity>) {
+        if (docs.isEmpty()) return
+        viewModelScope.launch {
+            docs.forEach { repository.deleteDocument(it) }
+            refreshStorageStats()
+            _uiState.update { it.copy(statusMessage = "Deleted ${docs.size} document(s)") }
+        }
+    }
+
+    fun mergeSelectedDocuments(docs: List<DocumentEntity>, onMerged: (DocumentEntity) -> Unit = {}) {
+        if (docs.size < 2) {
+            _uiState.update { it.copy(statusMessage = "Select at least 2 PDFs to merge") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            runCatching {
+                val merged = repository.mergeDocuments(docs, "Merged_${System.currentTimeMillis() % 100000}")
+                refreshStorageStats()
+                _uiState.update { it.copy(isImporting = false, statusMessage = "Merged into \"${merged.title}\"") }
+                onMerged(merged)
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(isImporting = false, statusMessage = err.localizedMessage ?: "Merge failed")
+                }
+            }
         }
     }
 
@@ -253,6 +322,69 @@ class LibraryViewModel(
                 _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to share") }
             }
         }
+    }
+
+    fun shareDocuments(docs: List<DocumentEntity>) {
+        if (docs.isEmpty()) return
+        if (docs.size == 1) {
+            shareDocument(docs.first())
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                val uris = ArrayList<Uri>()
+                docs.forEach { doc ->
+                    val file = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
+                    if (file.exists()) {
+                        uris.add(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+                    }
+                }
+                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "application/pdf"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(Intent.createChooser(intent, "Share ${uris.size} documents").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { err ->
+                _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to share selected files") }
+            }
+        }
+    }
+
+    fun runDeepDocumentSearch(query: String, immediate: Boolean = false) {
+        _uiState.update { it.copy(deepSearchQuery = query) }
+        deepSearchJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.length < 2) {
+            _uiState.update { it.copy(isSearchingContent = false, contentSearchResults = emptyList()) }
+            return
+        }
+        deepSearchJob = viewModelScope.launch {
+            if (!immediate) delay(280)
+            _uiState.update { it.copy(isSearchingContent = true) }
+            val results = runCatching { repository.searchAcrossDocuments(trimmed) }.getOrDefault(emptyList())
+            _uiState.update { state ->
+                val updatedHistory = if (trimmed.length >= 2) {
+                    (listOf(trimmed) + state.recentSearchQueries.filterNot { it.equals(trimmed, ignoreCase = true) }).take(8)
+                } else state.recentSearchQueries
+                state.copy(
+                    isSearchingContent = false,
+                    contentSearchResults = results,
+                    recentSearchQueries = updatedHistory
+                )
+            }
+        }
+    }
+
+    fun clearDeepSearch() {
+        deepSearchJob?.cancel()
+        _uiState.update {
+            it.copy(deepSearchQuery = "", isSearchingContent = false, contentSearchResults = emptyList())
+        }
+    }
+
+    fun clearRecentSearches() {
+        _uiState.update { it.copy(recentSearchQueries = emptyList()) }
     }
 
     fun clearStatusMessage() {

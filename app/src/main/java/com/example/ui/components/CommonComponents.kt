@@ -1,8 +1,10 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -149,28 +152,51 @@ fun DocumentTypeBadge(docType: String, isProtected: Boolean, modifier: Modifier 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentListCard(
     doc: DocumentEntity,
     onOpen: () -> Unit,
     onToggleStar: () -> Unit,
     onMoreClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(onClick = onOpen, onLongClick = onLongClick)
+    } else {
+        Modifier.clickable(onClick = onOpen)
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("doc_card_${doc.id}")
-            .clickable(onClick = onOpen),
+            .then(clickModifier),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onOpen() },
+                    modifier = Modifier.testTag("select_doc_${doc.id}")
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             DocumentTypeBadge(docType = doc.docType, isProtected = doc.isPasswordProtected)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -190,49 +216,66 @@ fun DocumentListCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(
-                onClick = onToggleStar,
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("star_doc_${doc.id}")
-            ) {
-                Icon(
-                    imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = if (doc.isStarred) "Unstar" else "Star",
-                    tint = if (doc.isStarred) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            IconButton(
-                onClick = onMoreClick,
-                modifier = Modifier
-                    .minimumInteractiveComponentSize()
-                    .testTag("more_doc_${doc.id}")
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.MoreVert,
-                    contentDescription = "Document options"
-                )
+            if (!selectionMode) {
+                IconButton(
+                    onClick = onToggleStar,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("star_doc_${doc.id}")
+                ) {
+                    Icon(
+                        imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (doc.isStarred) "Unstar" else "Star",
+                        tint = if (doc.isStarred) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(
+                    onClick = onMoreClick,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("more_doc_${doc.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Document options"
+                    )
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DocumentGridCard(
     doc: DocumentEntity,
     onOpen: () -> Unit,
     onToggleStar: () -> Unit,
     onMoreClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
+    val clickModifier = if (onLongClick != null) {
+        Modifier.combinedClickable(onClick = onOpen, onLongClick = onLongClick)
+    } else {
+        Modifier.clickable(onClick = onOpen)
+    }
     Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("doc_grid_card_${doc.id}")
-            .clickable(onClick = onOpen),
+            .then(clickModifier),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -242,21 +285,29 @@ fun DocumentGridCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 DocumentTypeBadge(docType = doc.docType, isProtected = doc.isPasswordProtected)
-                Row {
-                    IconButton(onClick = onToggleStar, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                            contentDescription = "Star",
-                            tint = if (doc.isStarred) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "Options",
-                            modifier = Modifier.size(20.dp)
-                        )
+                if (selectionMode) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { onOpen() },
+                        modifier = Modifier.testTag("select_grid_doc_${doc.id}")
+                    )
+                } else {
+                    Row {
+                        IconButton(onClick = onToggleStar, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                imageVector = if (doc.isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = "Star",
+                                tint = if (doc.isStarred) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        IconButton(onClick = onMoreClick, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "Options",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }

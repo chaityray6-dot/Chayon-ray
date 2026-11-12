@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import com.example.data.converter.OfficeConverterEngine
 import com.example.data.converter.OfficeFormat
@@ -17,6 +18,7 @@ import com.example.data.local.DocumentType
 import com.example.data.local.SignatureDao
 import com.example.data.local.SignatureEntity
 import com.example.data.pdf.PdfEngine
+import com.example.data.pdf.PdfSearchMatch
 import com.example.data.security.VaultSecurityManager
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
@@ -422,4 +424,100 @@ Important Metrics & Dates
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
+
+    suspend fun importDocumentsFromFolderTree(treeUri: Uri): BatchImportResult = withContext(Dispatchers.IO) {
+        val allowedExts = setOf("pdf", "docx", "xlsx", "pptx", "txt")
+        val existingNamesAndSizes = documentDao.getAllSnapshot()
+            .map { "${it.title.lowercase()}#${it.fileSizeBytes}" }
+            .toMutableSet()
+
+        val foundUris = mutableListOf<Uri>()
+
+        fun scanFolder(docId: String, depth: Int) {
+            if (depth > 2 || foundUris.size >= 40) return
+            val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
+            val projection = arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+                DocumentsContract.Document.COLUMN_SIZE
+            )
+            runCatching {
+                context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+                    val idIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+                    val nameIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                    val mimeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+                    val sizeIdx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
+                    while (cursor.moveToNext() && foundUris.size < 40) {
+                        val childId = if (idIdx >= 0) cursor.getString(idIdx) else continue
+                        val name = if (nameIdx >= 0) cursor.getString(nameIdx) ?: "" else ""
+                        val mime = if (mimeIdx >= 0) cursor.getString(mimeIdx) ?: "" else ""
+                        val size = if (sizeIdx >= 0) cursor.getLong(sizeIdx) else 0L
+
+                        if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                            scanFolder(childId, depth + 1)
+                        } else {
+                            val ext = name.substringAfterLast('.', "").lowercase()
+                            if (ext in allowedExts || mime == "application/pdf") {
+                                val titleKey = "${name.substringBeforeLast('.').lowercase()}#$size"
+                                if (titleKey !in existingNamesAndSizes) {
+                                    existingNamesAndSizes.add(titleKey)
+                                    foundUris.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, childId))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val rootDocId = DocumentsContract.getTreeDocumentId(treeUri)
+        scanFolder(rootDocId, 0)
+
+        var imported = 0
+        var failed = 0
+        for (docUri in foundUris) {
+            runCatching {
+                importDocumentFromUri(docUri)
+                imported++
+            }.onFailure {
+                failed++
+            }
+        }
+        BatchImportResult(importedCount = imported, failedCount = failed)
+    }
+
+    suspend fun mergeDocuments(docs: List<DocumentEntity>, outputTitle: String): DocumentEntity = withContext(Dispatchers.IO) {
+        require(docs.size >= 2) { "Select at least 2 documents to merge" }
+        val inputFiles = docs.mapNotNull { doc ->
+            val f = if (doc.isVaulted) decryptVaultTempFile(doc) else File(doc.filePath)
+            if (f.exists()) f else null
+        }
+        require(inputFiles.size >= 2) { "Unable to read selected PDF files" }
+        val outFile = uniqueFileIn(documentsDir, "${outputTitle.trim().ifBlank { "Merged_Document" }}.pdf")
+        pdfEngine.mergePdfs(inputFiles, outFile)
+        registerPdfFile(outFile, outFile.nameWithoutExtension, DocumentType.PDF)
+    }
+
+    suspend fun searchAcrossDocuments(query: String): List<DocumentContentSearchResult> = withContext(Dispatchers.IO) {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return@withContext emptyList()
+        val visibleDocs = documentDao.getAllSnapshot().filter { !it.isVaulted && !it.isPasswordProtected }
+        visibleDocs.mapNotNull { doc ->
+            val file = File(doc.filePath)
+            if (!file.exists()) return@mapNotNull null
+            val matches = pdfEngine.searchInPdf(file, trimmed)
+            if (matches.isEmpty()) null else DocumentContentSearchResult(doc, matches)
+        }
+    }
 }
+
+data class DocumentContentSearchResult(
+    val document: DocumentEntity,
+    val matches: List<PdfSearchMatch>
+)
+
+data class BatchImportResult(
+    val importedCount: Int,
+    val failedCount: Int
+)

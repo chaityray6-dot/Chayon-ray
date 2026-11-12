@@ -17,16 +17,16 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrandingWatermark
-import androidx.compose.material.icons.filled.CallMerge
-import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.BrandingWatermark
+import androidx.compose.material.icons.automirrored.filled.CallMerge
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.TextSnippet
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.TextSnippet
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -80,13 +80,13 @@ fun ToolsScreen(
         ToolHubItem(strings.toolImageToPdf, "Gallery/Camera, page size & margins", Icons.Filled.Image, BrandViolet, "tool_card_img2pdf", onOpenImageToPdf),
         ToolHubItem(strings.toolOfficeConvert, "PDF ↔ DOCX, XLSX, PPTX, TXT", Icons.Filled.SwapHoriz, SuccessEmerald, "tool_card_office", onOpenOfficeConverter),
         ToolHubItem("${strings.toolWebToPdf} / Notes", "Render URLs or rich notes to PDF", Icons.Filled.Language, BrandIndigo, "tool_card_web2pdf", onOpenWebAndNotes),
-        ToolHubItem(strings.toolMerge, "Combine 2+ PDFs into one", Icons.Filled.CallMerge, BrandRoyalBlue, "tool_card_merge", onOpenMerge),
-        ToolHubItem(strings.toolSplit, "Extract selected pages", Icons.Filled.CallSplit, WarningAmber, "tool_card_split", onOpenSplit),
+        ToolHubItem(strings.toolMerge, "Combine 2+ PDFs into one", Icons.AutoMirrored.Filled.CallMerge, BrandRoyalBlue, "tool_card_merge", onOpenMerge),
+        ToolHubItem(strings.toolSplit, "Extract selected pages", Icons.AutoMirrored.Filled.CallSplit, WarningAmber, "tool_card_split", onOpenSplit),
         ToolHubItem(strings.toolOrganize, "Reorder, rotate, duplicate, insert", Icons.Filled.ViewCarousel, BrandViolet, "tool_card_organize", onOpenOrganize),
         ToolHubItem(strings.toolCompress, "Low / Medium / High size preview", Icons.Filled.Compress, SuccessEmerald, "tool_card_compress", onOpenCompress),
-        ToolHubItem(strings.toolWatermark, "Text & logo opacity/position", Icons.Filled.BrandingWatermark, BrandIndigo, "tool_card_watermark", onOpenWatermark),
+        ToolHubItem(strings.toolWatermark, "Text & logo opacity/position", Icons.AutoMirrored.Filled.BrandingWatermark, BrandIndigo, "tool_card_watermark", onOpenWatermark),
         ToolHubItem(strings.toolProtect, "Password lock & decrypt PDFs", Icons.Filled.Lock, ErrorRose, "tool_card_protect", onOpenProtect),
-        ToolHubItem(strings.toolOcr, "English & বাংলা text + Searchable PDF", Icons.Filled.TextSnippet, Color(0xFF0EA5E9), "tool_card_ocr", onOpenOcr)
+        ToolHubItem(strings.toolOcr, "English & বাংলা text + Searchable PDF", Icons.AutoMirrored.Filled.TextSnippet, Color(0xFF0EA5E9), "tool_card_ocr", onOpenOcr)
     )
 
     LazyVerticalGrid(

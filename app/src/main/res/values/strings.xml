@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">Smart PDF Reader</string>
+    <string name="widget_description">Quickly scan, search inside PDFs, or import documents</string>
+    <string name="shortcut_scan_short">Scan</string>
+    <string name="shortcut_scan_long">Smart PDF Scanner</string>
+    <string name="shortcut_search_short">Search</string>
+    <string name="shortcut_search_long">Search Documents</string>
+    <string name="shortcut_import_short">Import</string>
+    <string name="shortcut_import_long">Import PDF or Document</string>
 </resources>

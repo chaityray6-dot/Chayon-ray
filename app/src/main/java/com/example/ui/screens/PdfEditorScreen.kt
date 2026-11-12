@@ -35,9 +35,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Check
@@ -50,7 +51,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Rectangle
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -193,7 +193,7 @@ fun PdfEditorScreen(
                     }
                     if (state.formFields.isNotEmpty()) {
                         IconButton(onClick = { showFormSheet = true }, modifier = Modifier.testTag("editor_forms_btn")) {
-                            Icon(Icons.Filled.Assignment, contentDescription = "Fill PDF Form")
+                            Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "Fill PDF Form")
                         }
                     }
                     Button(
@@ -281,7 +281,7 @@ fun PdfEditorScreen(
                             Triple(AnnotationToolType.CIRCLE, "Circle", Icons.Filled.Circle),
                             Triple(AnnotationToolType.ARROW, "Arrow", Icons.Filled.NorthEast),
                             Triple(AnnotationToolType.TEXT_BOX, "Text", Icons.Filled.TextFields),
-                            Triple(AnnotationToolType.STICKY_NOTE, "Note", Icons.Filled.StickyNote2),
+                            Triple(AnnotationToolType.STICKY_NOTE, "Note", Icons.AutoMirrored.Filled.StickyNote2),
                             Triple(AnnotationToolType.SIGNATURE, "Sign", Icons.Filled.Draw),
                             Triple(AnnotationToolType.IMAGE, "Image", Icons.Filled.Image)
                         )

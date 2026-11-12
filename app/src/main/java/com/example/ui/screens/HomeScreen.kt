@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
@@ -113,7 +115,9 @@ fun HomeScreen(
     onOpenOcr: () -> Unit,
     onOpenWebAndNotes: () -> Unit,
     onOpenAiTab: () -> Unit,
-    onOpenVaultFilter: () -> Unit
+    onOpenVaultFilter: () -> Unit,
+    onOpenDocumentsSearch: (String) -> Unit = {},
+    onImportFolderClick: () -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     var selectedActionDoc by remember { mutableStateOf<DocumentEntity?>(null) }
@@ -176,6 +180,17 @@ fun HomeScreen(
                 ) {
                     DocuVerseBrandHeader(modifier = Modifier.weight(1f))
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { onOpenDocumentsSearch(searchQuery) },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("home_deep_search_icon")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = strings.documentsSearch
+                            )
+                        }
                         IconButton(
                             onClick = onToggleThemeQuick,
                             modifier = Modifier
@@ -240,6 +255,29 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .testTag("home_search_field")
                 )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    AssistChip(
+                        onClick = { onOpenDocumentsSearch(searchQuery) },
+                        label = {
+                            Text(
+                                if (trimmedQuery.isEmpty()) strings.documentsSearch
+                                else "Search \"$trimmedQuery\" inside PDFs"
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.FindInPage,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        modifier = Modifier.testTag("home_deep_search_chip")
+                    )
+                }
             }
 
             // Storage & Workspace Overview Card
@@ -499,6 +537,7 @@ fun HomeScreen(
             strings = strings,
             onDismiss = { showFabMenu = false },
             onImportClick = onImportClick,
+            onImportFolderClick = onImportFolderClick,
             onOpenScanner = onOpenScanner,
             onOpenImageToPdf = onOpenImageToPdf,
             onOpenWebAndNotes = onOpenWebAndNotes

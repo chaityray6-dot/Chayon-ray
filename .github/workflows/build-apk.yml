@@ -21,10 +21,17 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Setup Android SDK & Accept Licenses
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36.1 platforms;android-36 build-tools;36.0.0 platform-tools'
+          accept-android-sdk-licenses: true
+
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+          validate-wrappers: false
 
       - name: Prepare debug keystore
         run: |
@@ -37,7 +44,7 @@ jobs:
           fi
 
       - name: Build Debug APK (for direct mobile testing)
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
 
       - name: Copy Debug APK
         run: cp app/build/outputs/apk/debug/app-debug.apk Smart-PDF-Reader-debug.apk
@@ -49,20 +56,25 @@ jobs:
           path: Smart-PDF-Reader-debug.apk
           retention-days: 30
 
-      - name: Build Signed Play Store AAB & Release APK (when keystore secrets are configured)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+      - name: Build Signed Play Store AAB & Release APK (if keystore secrets are set)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
-          gradle bundleRelease assembleRelease --no-daemon
-          cp app/build/outputs/bundle/release/app-release.aab Smart-PDF-Reader-playstore.aab
-          cp app/build/outputs/apk/release/app-release.apk Smart-PDF-Reader-release.apk
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+            gradle bundleRelease assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8"
+            cp app/build/outputs/bundle/release/app-release.aab Smart-PDF-Reader-playstore.aab
+            cp app/build/outputs/apk/release/app-release.apk Smart-PDF-Reader-release.apk
+            echo "HAS_RELEASE=true" >> $GITHUB_ENV
+          else
+            echo "Skipping release AAB/APK (Play Store signing secrets not configured yet)."
+            echo "HAS_RELEASE=false" >> $GITHUB_ENV
+          fi
 
       - name: Upload Play Store Release AAB & APK artifacts
-        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+        if: env.HAS_RELEASE == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Smart-PDF-Reader-PlayStore-Release

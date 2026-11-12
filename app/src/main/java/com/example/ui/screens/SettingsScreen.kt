@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,20 +11,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.StarRate
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -77,6 +82,7 @@ fun SettingsScreen(
     onCreateLocalBackup: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    val context = LocalContext.current
     var showPinDialog by remember { mutableStateOf(false) }
     var pinInput by remember { mutableStateOf("") }
     var cloudPermissionProvider by remember { mutableStateOf<CloudProvider?>(null) }
@@ -306,16 +312,41 @@ fun SettingsScreen(
 
         // About & Help
         item {
-            SettingsSectionCard(title = strings.settingsAbout, icon = Icons.Filled.HelpOutline) {
+            SettingsSectionCard(title = strings.settingsAbout, icon = Icons.AutoMirrored.Filled.HelpOutline) {
                 Text("Smart PDF Reader v1.0", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
                     strings.tagline,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { showHelpDialog = true }) {
-                    Text("API & Configuration Guide")
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showHelpDialog = true },
+                        modifier = Modifier.weight(1f).testTag("settings_api_guide_btn")
+                    ) {
+                        Text("Setup Guide")
+                    }
+                    Button(
+                        onClick = {
+                            val pkg = context.packageName
+                            val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$pkg"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            runCatching { context.startActivity(marketIntent) }.onFailure {
+                                runCatching { context.startActivity(webIntent) }
+                            }
+                        },
+                        modifier = Modifier.weight(1f).testTag("settings_rate_app_btn")
+                    ) {
+                        Icon(Icons.Filled.StarRate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(strings.rateApp, maxLines = 1)
+                    }
                 }
             }
         }

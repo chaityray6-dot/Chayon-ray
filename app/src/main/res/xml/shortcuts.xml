@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="shortcut_scan"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_scan"
+        android:shortcutShortLabel="@string/shortcut_scan_short"
+        android:shortcutLongLabel="@string/shortcut_scan_long">
+        <intent
+            android:action="com.example.ACTION_WIDGET_SCAN"
+            android:targetPackage="com.aistudio.docuverse.vxrmqt"
+            android:targetClass="com.example.MainActivity">
+            <extra
+                android:name="com.example.EXTRA_WIDGET_ACTION"
+                android:value="scan" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="shortcut_search"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search_short"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="com.example.ACTION_WIDGET_SEARCH"
+            android:targetPackage="com.aistudio.docuverse.vxrmqt"
+            android:targetClass="com.example.MainActivity">
+            <extra
+                android:name="com.example.EXTRA_WIDGET_ACTION"
+                android:value="search" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="shortcut_import"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_import"
+        android:shortcutShortLabel="@string/shortcut_import_short"
+        android:shortcutLongLabel="@string/shortcut_import_long">
+        <intent
+            android:action="com.example.ACTION_WIDGET_IMPORT"
+            android:targetPackage="com.aistudio.docuverse.vxrmqt"
+            android:targetClass="com.example.MainActivity">
+            <extra
+                android:name="com.example.EXTRA_WIDGET_ACTION"
+                android:value="import" />
+        </intent>
+    </shortcut>
+</shortcuts>

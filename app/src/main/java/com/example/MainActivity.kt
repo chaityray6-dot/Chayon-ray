@@ -80,6 +80,7 @@ import com.example.ui.i18n.LocalAppStrings
 import com.example.ui.i18n.stringsForLanguage
 import com.example.ui.navigation.AiRoute
 import com.example.ui.navigation.CompressSecurityRoute
+import com.example.ui.navigation.DocumentsSearchRoute
 import com.example.ui.navigation.EditorRoute
 import com.example.ui.navigation.FilesRoute
 import com.example.ui.navigation.HomeRoute
@@ -93,6 +94,7 @@ import com.example.ui.navigation.SettingsRoute
 import com.example.ui.navigation.ToolsRoute
 import com.example.ui.navigation.WebAndNotesToPdfRoute
 import com.example.ui.screens.AiAssistantScreen
+import com.example.ui.screens.DocumentsSearchScreen
 import com.example.ui.screens.FilesScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.OnboardingScreen
@@ -117,6 +119,7 @@ import com.example.ui.viewmodel.LibraryViewModel
 import com.example.ui.viewmodel.ReaderViewModel
 import com.example.ui.viewmodel.SettingsViewModel
 import com.example.ui.viewmodel.ToolsViewModel
+import com.example.widget.SmartPdfWidgetProvider
 import kotlinx.coroutines.delay
 
 private data class BottomNavTab(
@@ -129,8 +132,11 @@ private data class BottomNavTab(
 
 class MainActivity : FragmentActivity() {
 
+    private var latestIntent by mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        latestIntent = intent
         enableEdgeToEdge()
         AdMobManager.preloadInterstitial(this)
 
@@ -217,7 +223,8 @@ class MainActivity : FragmentActivity() {
                                     toolsVm = toolsVm,
                                     aiVm = aiVm,
                                     settingsVm = settingsVm,
-                                    initialIntent = intent
+                                    latestIntent = latestIntent,
+                                    onConsumeIntent = { latestIntent = null }
                                 )
                             }
                         }
@@ -232,6 +239,12 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        latestIntent = intent
     }
 }
 
@@ -276,7 +289,8 @@ private fun DocuVerseRootShell(
     toolsVm: ToolsViewModel,
     aiVm: AiViewModel,
     settingsVm: SettingsViewModel,
-    initialIntent: Intent?
+    latestIntent: Intent?,
+    onConsumeIntent: () -> Unit
 ) {
     val strings = LocalAppStrings.current
     val navController = rememberNavController()
@@ -299,6 +313,18 @@ private fun DocuVerseRootShell(
         }
     }
 
+    val folderImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                activity.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            libraryVm.importFolderTree(uri)
+        }
+    }
+
     fun triggerImport() {
         safImporter.launch(
             arrayOf(
@@ -311,13 +337,31 @@ private fun DocuVerseRootShell(
         )
     }
 
-    LaunchedEffect(initialIntent) {
-        if (initialIntent?.action == Intent.ACTION_VIEW) {
-            initialIntent.data?.let { uri ->
+    LaunchedEffect(latestIntent) {
+        val currentIntent = latestIntent ?: return@LaunchedEffect
+        if (currentIntent.action == Intent.ACTION_VIEW && currentIntent.data != null) {
+            currentIntent.data?.let { uri ->
                 libraryVm.importUri(uri) { doc ->
                     navController.navigate(ReaderRoute(doc.id))
                 }
             }
+            onConsumeIntent()
+            return@LaunchedEffect
+        }
+        val widgetAction = currentIntent.getStringExtra(SmartPdfWidgetProvider.EXTRA_WIDGET_ACTION)
+            ?: when (currentIntent.action) {
+                SmartPdfWidgetProvider.INTENT_ACTION_SCAN -> SmartPdfWidgetProvider.ACTION_SCAN
+                SmartPdfWidgetProvider.INTENT_ACTION_SEARCH -> SmartPdfWidgetProvider.ACTION_SEARCH
+                SmartPdfWidgetProvider.INTENT_ACTION_IMPORT -> SmartPdfWidgetProvider.ACTION_IMPORT
+                else -> null
+            }
+        if (widgetAction != null) {
+            when (widgetAction) {
+                SmartPdfWidgetProvider.ACTION_SCAN -> navController.navigate(ScannerRoute)
+                SmartPdfWidgetProvider.ACTION_SEARCH -> navController.navigate(DocumentsSearchRoute(""))
+                SmartPdfWidgetProvider.ACTION_IMPORT -> triggerImport()
+            }
+            onConsumeIntent()
         }
     }
 
@@ -458,7 +502,11 @@ private fun DocuVerseRootShell(
                             onOpenVaultFilter = {
                                 libraryVm.setFilterOption(FileFilterOption.VAULT)
                                 navigateTopTab(FilesRoute)
-                            }
+                            },
+                            onOpenDocumentsSearch = { initial ->
+                                navController.navigate(DocumentsSearchRoute(initial))
+                            },
+                            onImportFolderClick = { folderImporter.launch(null) }
                         )
                     }
 
@@ -478,6 +526,7 @@ private fun DocuVerseRootShell(
                             onSortChange = { libraryVm.setSortOption(it) },
                             onToggleGridView = { libraryVm.toggleGridView() },
                             onImportClick = { triggerImport() },
+                            onImportFolderClick = { folderImporter.launch(null) },
                             onCleanDuplicates = { libraryVm.removeDuplicatesKeepNewest() },
                             onVerifyPin = { libraryVm.verifyPin(it) },
                             onRequestBiometric = {
@@ -500,7 +549,20 @@ private fun DocuVerseRootShell(
                                 if (doc.isVaulted) libraryVm.restoreFromVault(doc)
                                 else libraryVm.moveToVault(doc)
                             },
-                            onDeleteDocument = { libraryVm.deleteDocument(it) }
+                            onDeleteDocument = { libraryVm.deleteDocument(it) },
+                            onOpenDocumentsSearch = { initial ->
+                                navController.navigate(DocumentsSearchRoute(initial))
+                            },
+                            onMergeSelected = { docs ->
+                                libraryVm.mergeSelectedDocuments(docs) { merged ->
+                                    AdMobManager.showInterstitialIfReady(activity) {
+                                        navController.navigate(ReaderRoute(merged.id))
+                                    }
+                                }
+                            },
+                            onShareSelected = { libraryVm.shareDocuments(it) },
+                            onStarSelected = { docs, starred -> libraryVm.setStarredForDocuments(docs, starred) },
+                            onDeleteSelected = { libraryVm.deleteDocuments(it) }
                         )
                     }
 
@@ -685,6 +747,34 @@ private fun DocuVerseRootShell(
                                     navController.navigate(ReaderRoute(doc.id))
                                 }
                             }
+                        )
+                    }
+
+                    composable<DocumentsSearchRoute> { backStackEntry ->
+                        val args = backStackEntry.toRoute<DocumentsSearchRoute>()
+                        DocumentsSearchScreen(
+                            initialQuery = args.initialQuery,
+                            query = libState.deepSearchQuery,
+                            allDocuments = allDocs,
+                            contentResults = libState.contentSearchResults,
+                            isSearchingContent = libState.isSearchingContent,
+                            recentSearches = libState.recentSearchQueries,
+                            onQueryChange = { libraryVm.runDeepDocumentSearch(it) },
+                            onSubmitSearch = { libraryVm.runDeepDocumentSearch(it, immediate = true) },
+                            onClearRecentSearches = { libraryVm.clearRecentSearches() },
+                            onBack = {
+                                libraryVm.clearDeepSearch()
+                                navController.popBackStack()
+                            },
+                            onOpenDocumentPage = { docId, page ->
+                                navController.navigate(ReaderRoute(docId, page))
+                            },
+                            onEditDocument = { doc -> navController.navigate(EditorRoute(doc.id)) },
+                            onToggleStar = { libraryVm.toggleStar(it) },
+                            onRenameDocument = { d, title -> libraryVm.renameDocument(d, title) },
+                            onShareDocument = { libraryVm.shareDocument(it) },
+                            onMoveToVault = { libraryVm.moveToVault(it) },
+                            onDeleteDocument = { libraryVm.deleteDocument(it) }
                         )
                     }
                 }
