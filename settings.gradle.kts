@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "DocuVerse"
+rootProject.name = "Smart PDF Reader"
 
 include(":app")

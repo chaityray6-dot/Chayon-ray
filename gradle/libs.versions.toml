@@ -46,6 +46,7 @@ pdfboxAndroid = "2.0.27.0"
 mlkitTextRecognition = "16.0.1"
 kotlinxSerializationJson = "1.8.0"
 fragmentKtx = "1.8.6"
+playServicesAds = "25.5.0"
 
 
 [libraries]
@@ -106,6 +107,7 @@ pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref
 mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragmentKtx" }
+play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
 
 
 [plugins]

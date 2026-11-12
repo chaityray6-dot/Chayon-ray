@@ -97,7 +97,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = painterResource(id = R.drawable.ic_launcher_art),
-                        contentDescription = "DocuVerse",
+                        contentDescription = "Smart PDF Reader",
                         modifier = Modifier
                             .size(34.dp)
                             .clip(RoundedCornerShape(10.dp))

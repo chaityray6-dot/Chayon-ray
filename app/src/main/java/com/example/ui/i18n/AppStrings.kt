@@ -68,7 +68,7 @@ data class AppStrings(
 )
 
 val EnglishStrings = AppStrings(
-    appName = "DocuVerse",
+    appName = "Smart PDF Reader",
     tagline = "Everything You Need for Documents.",
     navHome = "Home",
     navFiles = "Files",
@@ -128,7 +128,7 @@ val EnglishStrings = AppStrings(
 )
 
 val BengaliStrings = AppStrings(
-    appName = "DocuVerse",
+    appName = "Smart PDF Reader",
     tagline = "ডকুমেন্টের জন্য প্রয়োজনীয় সবকিছু।",
     navHome = "হোম",
     navFiles = "ফাইল",

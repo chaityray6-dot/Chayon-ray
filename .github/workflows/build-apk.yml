@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK & Play Store Bundle
 
 on:
   push:
@@ -36,28 +36,54 @@ jobs:
               -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build Debug APK
+      - name: Build Debug APK (for direct mobile testing)
         run: gradle assembleDebug --no-daemon
 
-      - name: Copy APK with friendly name
-        run: cp app/build/outputs/apk/debug/app-debug.apk DocuVerse-debug.apk
+      - name: Copy Debug APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Smart-PDF-Reader-debug.apk
 
-      - name: Upload APK artifact
+      - name: Upload Debug APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DocuVerse-APK
-          path: DocuVerse-debug.apk
+          name: Smart-PDF-Reader-Debug-APK
+          path: Smart-PDF-Reader-debug.apk
           retention-days: 30
 
-      - name: Publish APK to GitHub Releases (direct .apk download)
+      - name: Build Signed Play Store AAB & Release APK (when keystore secrets are configured)
+        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > my-upload-key.jks
+          gradle bundleRelease assembleRelease --no-daemon
+          cp app/build/outputs/bundle/release/app-release.aab Smart-PDF-Reader-playstore.aab
+          cp app/build/outputs/apk/release/app-release.apk Smart-PDF-Reader-release.apk
+
+      - name: Upload Play Store Release AAB & APK artifacts
+        if: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.STORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Smart-PDF-Reader-PlayStore-Release
+          path: |
+            Smart-PDF-Reader-playstore.aab
+            Smart-PDF-Reader-release.apk
+          retention-days: 30
+
+      - name: Publish to GitHub Releases
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          FILES="Smart-PDF-Reader-debug.apk"
+          if [ -f Smart-PDF-Reader-playstore.aab ]; then
+            FILES="$FILES Smart-PDF-Reader-playstore.aab Smart-PDF-Reader-release.apk"
+          fi
           if gh release view latest-apk >/dev/null 2>&1; then
-            gh release upload latest-apk DocuVerse-debug.apk --clobber
+            gh release upload latest-apk $FILES --clobber
           else
-            gh release create latest-apk DocuVerse-debug.apk \
-              --title "DocuVerse Latest APK" \
-              --notes "Latest automatically built Android APK for DocuVerse."
+            gh release create latest-apk $FILES \
+              --title "Smart PDF Reader Latest Build" \
+              --notes "Automatically built Android APK (and Play Store AAB when signing secrets are set) for Smart PDF Reader."
           fi

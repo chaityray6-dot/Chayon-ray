@@ -100,7 +100,7 @@ fun DocuVerseBrandHeader(modifier: Modifier = Modifier) {
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_launcher_art),
-            contentDescription = "DocuVerse Logo",
+            contentDescription = "Smart PDF Reader Logo",
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp)),

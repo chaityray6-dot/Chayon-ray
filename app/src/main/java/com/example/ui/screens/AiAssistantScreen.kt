@@ -258,7 +258,7 @@ fun AiAssistantScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    text = if (msg.isUser) "You" else "DocuVerse AI",
+                                    text = if (msg.isUser) "You" else "Smart PDF Reader AI",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
                                 )

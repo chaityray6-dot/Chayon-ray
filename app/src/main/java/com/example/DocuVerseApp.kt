@@ -3,6 +3,7 @@ package com.example
 import android.app.Application
 import androidx.work.Configuration
 import androidx.work.WorkManager
+import com.example.data.ads.AdMobManager
 import com.example.di.AppContainer
 import com.example.work.DocumentIndexWorker
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -19,6 +20,7 @@ class DocuVerseApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         PDFBoxResourceLoader.init(applicationContext)
+        AdMobManager.initialize(this)
         container = AppContainer(this)
         runCatching {
             if (!WorkManager.isInitialized()) {

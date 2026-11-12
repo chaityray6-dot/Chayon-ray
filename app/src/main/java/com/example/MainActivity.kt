@@ -72,6 +72,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.example.data.ads.AdMobManager
+import com.example.ui.components.AdMobBannerBar
 import com.example.ui.components.PinLockGateScreen
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.i18n.LocalAppStrings
@@ -130,6 +132,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AdMobManager.preloadInterstitial(this)
 
         val app = application as DocuVerseApp
         val container = app.container
@@ -190,13 +193,13 @@ class MainActivity : FragmentActivity() {
                             }
                             prefs.isAppLockEnabled && !libState.isAppUnlocked && !showSplash -> {
                                 PinLockGateScreen(
-                                    title = "Unlock DocuVerse",
+                                    title = "Unlock Smart PDF Reader",
                                     biometricAvailable = prefs.biometricEnabled && container.vaultSecurityManager.isBiometricAvailable(),
                                     onVerifyPin = { libraryVm.verifyPin(it) },
                                     onRequestBiometric = {
                                         container.vaultSecurityManager.showBiometricPrompt(
                                             activity = this@MainActivity,
-                                            title = "DocuVerse Security",
+                                            title = "Smart PDF Reader Security",
                                             subtitle = "Authenticate to access your documents",
                                             negativeText = "Use PIN",
                                             onSuccess = { libraryVm.unlockApp() },
@@ -243,14 +246,14 @@ private fun SplashOverlay() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Image(
                 painter = painterResource(id = R.drawable.ic_launcher_art),
-                contentDescription = "DocuVerse Logo",
+                contentDescription = "Smart PDF Reader Logo",
                 modifier = Modifier
                     .size(96.dp)
                     .clip(RoundedCornerShape(24.dp))
             )
             Spacer(Modifier.height(16.dp))
             Text(
-                text = "DocuVerse",
+                text = "Smart PDF Reader",
                 style = MaterialTheme.typography.displaySmall,
                 color = Color.White,
                 fontWeight = FontWeight.Bold
@@ -371,21 +374,24 @@ private fun DocuVerseRootShell(
             contentWindowInsets = WindowInsets.safeDrawing,
             bottomBar = {
                 if (isTopLevel && !useRail) {
-                    NavigationBar {
-                        tabs.forEach { tab ->
-                            val selected = currentDest?.hasRoute(tab.route::class) == true
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { navigateTopTab(tab.route) },
-                                icon = {
-                                    Icon(
-                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                        contentDescription = tab.label
-                                    )
-                                },
-                                label = { Text(tab.label, maxLines = 1) },
-                                modifier = Modifier.testTag(tab.testTag)
-                            )
+                    Column {
+                        AdMobBannerBar()
+                        NavigationBar {
+                            tabs.forEach { tab ->
+                                val selected = currentDest?.hasRoute(tab.route::class) == true
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = { navigateTopTab(tab.route) },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                            contentDescription = tab.label
+                                        )
+                                    },
+                                    label = { Text(tab.label, maxLines = 1) },
+                                    modifier = Modifier.testTag(tab.testTag)
+                                )
+                            }
                         }
                     }
                 }
@@ -416,11 +422,12 @@ private fun DocuVerseRootShell(
                     }
                 }
 
-                NavHost(
-                    navController = navController,
-                    startDestination = HomeRoute,
-                    modifier = Modifier.weight(1f).fillMaxSize()
-                ) {
+                Column(modifier = Modifier.weight(1f).fillMaxSize()) {
+                    NavHost(
+                        navController = navController,
+                        startDestination = HomeRoute,
+                        modifier = Modifier.weight(1f).fillMaxSize()
+                    ) {
                     composable<HomeRoute> {
                         HomeScreen(
                             allDocuments = allDocs,
@@ -579,8 +586,10 @@ private fun DocuVerseRootShell(
                             viewModel = editorVm,
                             onBack = { navController.popBackStack() },
                             onExportedToReader = { saved ->
-                                navController.navigate(ReaderRoute(saved.id)) {
-                                    popUpTo<EditorRoute> { inclusive = true }
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(saved.id)) {
+                                        popUpTo<EditorRoute> { inclusive = true }
+                                    }
                                 }
                             }
                         )
@@ -591,8 +600,10 @@ private fun DocuVerseRootShell(
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
                             onSavedToReader = { doc ->
-                                navController.navigate(ReaderRoute(doc.id)) {
-                                    popUpTo<ScannerRoute> { inclusive = true }
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id)) {
+                                        popUpTo<ScannerRoute> { inclusive = true }
+                                    }
                                 }
                             }
                         )
@@ -604,8 +615,10 @@ private fun DocuVerseRootShell(
                             onBack = { navController.popBackStack() },
                             onOpenScanner = { navController.navigate(ScannerRoute) },
                             onCreated = { doc ->
-                                navController.navigate(ReaderRoute(doc.id)) {
-                                    popUpTo<ImageToPdfRoute> { inclusive = true }
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id)) {
+                                        popUpTo<ImageToPdfRoute> { inclusive = true }
+                                    }
                                 }
                             }
                         )
@@ -615,7 +628,11 @@ private fun DocuVerseRootShell(
                         OfficeConverterScreen(
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
-                            onPdfCreated = { doc -> navController.navigate(ReaderRoute(doc.id)) }
+                            onPdfCreated = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            }
                         )
                     }
 
@@ -623,7 +640,11 @@ private fun DocuVerseRootShell(
                         WebAndNotesToPdfScreen(
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
-                            onPdfCreated = { doc -> navController.navigate(ReaderRoute(doc.id)) }
+                            onPdfCreated = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            }
                         )
                     }
 
@@ -633,7 +654,11 @@ private fun DocuVerseRootShell(
                             initialMode = args.mode,
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
-                            onDone = { doc -> navController.navigate(ReaderRoute(doc.id)) }
+                            onDone = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            }
                         )
                     }
 
@@ -643,7 +668,11 @@ private fun DocuVerseRootShell(
                             initialMode = args.mode,
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
-                            onDone = { doc -> navController.navigate(ReaderRoute(doc.id)) }
+                            onDone = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            }
                         )
                     }
 
@@ -651,9 +680,17 @@ private fun DocuVerseRootShell(
                         OcrToolScreen(
                             viewModel = toolsVm,
                             onBack = { navController.popBackStack() },
-                            onSearchablePdfCreated = { doc -> navController.navigate(ReaderRoute(doc.id)) }
+                            onSearchablePdfCreated = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            }
                         )
                     }
+                }
+                if (isTopLevel && useRail) {
+                    AdMobBannerBar()
+                }
                 }
             }
         }

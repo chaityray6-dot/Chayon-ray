@@ -307,7 +307,7 @@ fun SettingsScreen(
         // About & Help
         item {
             SettingsSectionCard(title = strings.settingsAbout, icon = Icons.Filled.HelpOutline) {
-                Text("DocuVerse v1.0", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text("Smart PDF Reader v1.0", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Text(
                     strings.tagline,
                     style = MaterialTheme.typography.bodySmall,
@@ -359,7 +359,7 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text(
-                        "Permission notice: DocuVerse never uploads your personal documents without your explicit action. Connecting ${provider.displayName} requests scope '${provider.scope}'.",
+                        "Permission notice: Smart PDF Reader never uploads your personal documents without your explicit action. Connecting ${provider.displayName} requests scope '${provider.scope}'.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Spacer(Modifier.height(10.dp))
@@ -387,7 +387,7 @@ fun SettingsScreen(
     if (showHelpDialog) {
         AlertDialog(
             onDismissRequest = { showHelpDialog = false },
-            title = { Text("DocuVerse Setup & Privacy") },
+            title = { Text("Smart PDF Reader Setup & Privacy") },
             text = {
                 Text(
                     "• Offline Reading, Editing, Merge/Split, Compression, Watermarks, and AES-256 Vault work 100% locally.\n" +
