@@ -1,5 +1,6 @@
 package com.example.ui.screens.tools
 
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -180,13 +181,25 @@ fun OfficeConverterScreen(
                                 Text("${file.length() / 1024} KB", style = MaterialTheme.typography.bodySmall)
                             }
                             OutlinedButton(onClick = {
-                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file,
+                                    file.name
+                                )
                                 val intent = Intent(Intent.ACTION_SEND).apply {
                                     type = "*/*"
                                     putExtra(Intent.EXTRA_STREAM, uri)
+                                    putExtra(Intent.EXTRA_SUBJECT, file.name)
+                                    putExtra(Intent.EXTRA_TITLE, file.name)
+                                    clipData = ClipData.newUri(context.contentResolver, file.name, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
+                                context.startActivity(
+                                    Intent.createChooser(intent, "Share ${file.name}").apply {
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                )
                             }) {
                                 Icon(Icons.Filled.Share, contentDescription = null)
                                 Spacer(Modifier.width(4.dp))

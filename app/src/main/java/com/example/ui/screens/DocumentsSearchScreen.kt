@@ -102,6 +102,7 @@ fun DocumentsSearchScreen(
     onToggleStar: (DocumentEntity) -> Unit,
     onRenameDocument: (DocumentEntity, String) -> Unit,
     onShareDocument: (DocumentEntity) -> Unit,
+    onSaveToDevice: (DocumentEntity) -> Unit = {},
     onMoveToVault: (DocumentEntity) -> Unit,
     onDeleteDocument: (DocumentEntity) -> Unit
 ) {
@@ -406,6 +407,7 @@ fun DocumentsSearchScreen(
             onOpenReader = { onOpenDocumentPage(doc.id, doc.lastViewedPage) },
             onOpenEditor = { onEditDocument(doc) },
             onShare = { onShareDocument(doc) },
+            onSaveToDevice = { onSaveToDevice(doc) },
             onRename = { newTitle -> onRenameDocument(doc, newTitle) },
             onToggleVault = { onMoveToVault(doc) },
             onDelete = { onDeleteDocument(doc) }

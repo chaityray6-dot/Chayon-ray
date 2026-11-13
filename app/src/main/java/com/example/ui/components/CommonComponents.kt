@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fingerprint
@@ -337,6 +338,7 @@ fun DocumentActionsSheet(
     onOpenReader: () -> Unit,
     onOpenEditor: () -> Unit,
     onShare: () -> Unit,
+    onSaveToDevice: (() -> Unit)? = null,
     onRename: (String) -> Unit,
     onToggleVault: () -> Unit,
     onDelete: () -> Unit
@@ -370,6 +372,13 @@ fun DocumentActionsSheet(
                 leadingContent = { Icon(Icons.Filled.Share, contentDescription = null) },
                 modifier = Modifier.clickable { onDismiss(); onShare() }
             )
+            if (onSaveToDevice != null) {
+                ListItem(
+                    headlineContent = { Text("Save to Downloads") },
+                    leadingContent = { Icon(Icons.Filled.Download, contentDescription = null) },
+                    modifier = Modifier.clickable { onDismiss(); onSaveToDevice() }.testTag("action_save_downloads")
+                )
+            }
             ListItem(
                 headlineContent = { Text(strings.rename) },
                 leadingContent = { Icon(Icons.Filled.DriveFileRenameOutline, contentDescription = null) },

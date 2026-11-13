@@ -102,6 +102,7 @@ fun FilesScreen(
     onToggleStar: (DocumentEntity) -> Unit,
     onRenameDocument: (DocumentEntity, String) -> Unit,
     onShareDocument: (DocumentEntity) -> Unit,
+    onSaveToDevice: (DocumentEntity) -> Unit = {},
     onToggleVault: (DocumentEntity) -> Unit,
     onDeleteDocument: (DocumentEntity) -> Unit,
     onOpenDocumentsSearch: (String) -> Unit = {},
@@ -480,6 +481,7 @@ fun FilesScreen(
             onOpenReader = { onOpenDocument(doc) },
             onOpenEditor = { onEditDocument(doc) },
             onShare = { onShareDocument(doc) },
+            onSaveToDevice = { onSaveToDevice(doc) },
             onRename = { newTitle -> onRenameDocument(doc, newTitle) },
             onToggleVault = { onToggleVault(doc) },
             onDelete = { onDeleteDocument(doc) }

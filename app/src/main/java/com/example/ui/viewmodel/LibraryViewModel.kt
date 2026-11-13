@@ -1,8 +1,15 @@
 package com.example.ui.viewmodel
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +20,7 @@ import com.example.data.local.UserPreferences
 import com.example.data.repository.DocumentContentSearchResult
 import com.example.data.repository.DocumentRepository
 import com.example.data.security.VaultSecurityManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +31,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 enum class SortOption(val label: String) {
@@ -307,46 +316,168 @@ class LibraryViewModel(
         }
     }
 
-    fun shareDocument(doc: DocumentEntity) {
+    private fun cleanPdfDisplayName(rawTitle: String): String {
+        val safe = rawTitle.trim().ifBlank { "Document" }.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        return if (safe.endsWith(".pdf", ignoreCase = true)) safe else "$safe.pdf"
+    }
+
+    fun shareDocument(doc: DocumentEntity, hostActivity: Activity? = null) {
         viewModelScope.launch {
             runCatching {
-                val file = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                val intent = Intent(Intent.ACTION_SEND).apply {
+                val file = withContext(Dispatchers.IO) {
+                    if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
+                }
+                if (!file.exists() || file.length() <= 0L) {
+                    _uiState.update { it.copy(statusMessage = "PDF file is missing on storage") }
+                    return@launch
+                }
+                val displayName = cleanPdfDisplayName(doc.title)
+                val uri = FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file,
+                    displayName
+                )
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(Intent.EXTRA_SUBJECT, displayName)
+                    putExtra(Intent.EXTRA_TITLE, displayName)
+                    clipData = ClipData.newUri(context.contentResolver, displayName, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Share ${doc.title}").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val launcherContext: Context = hostActivity ?: context
+                val chooser = Intent.createChooser(sendIntent, "Share $displayName").apply {
+                    putExtra(Intent.EXTRA_TITLE, displayName)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (launcherContext !is Activity) {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+                launcherContext.startActivity(chooser)
             }.onFailure { err ->
-                _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to share") }
+                val msg = if (err is ActivityNotFoundException) {
+                    "No sharing app found. Use 'Save to Downloads' instead."
+                } else {
+                    err.localizedMessage ?: "Unable to share"
+                }
+                _uiState.update { it.copy(statusMessage = msg) }
             }
         }
     }
 
-    fun shareDocuments(docs: List<DocumentEntity>) {
+    fun shareDocuments(docs: List<DocumentEntity>, hostActivity: Activity? = null) {
         if (docs.isEmpty()) return
         if (docs.size == 1) {
-            shareDocument(docs.first())
+            shareDocument(docs.first(), hostActivity)
             return
         }
         viewModelScope.launch {
             runCatching {
                 val uris = ArrayList<Uri>()
-                docs.forEach { doc ->
-                    val file = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
-                    if (file.exists()) {
-                        uris.add(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file))
+                val names = ArrayList<String>()
+                withContext(Dispatchers.IO) {
+                    docs.forEach { doc ->
+                        val file = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
+                        if (file.exists() && file.length() > 0L) {
+                            val displayName = cleanPdfDisplayName(doc.title)
+                            uris.add(
+                                FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file,
+                                    displayName
+                                )
+                            )
+                            names.add(displayName)
+                        }
                     }
                 }
-                val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                if (uris.isEmpty()) {
+                    _uiState.update { it.copy(statusMessage = "Selected files are unavailable") }
+                    return@launch
+                }
+                val clip = ClipData.newUri(context.contentResolver, names.first(), uris.first()).apply {
+                    for (i in 1 until uris.size) {
+                        addItem(ClipData.Item(uris[i]))
+                    }
+                }
+                val sendIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                     type = "application/pdf"
                     putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(Intent.EXTRA_SUBJECT, "Shared ${uris.size} PDFs")
+                    clipData = clip
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                context.startActivity(Intent.createChooser(intent, "Share ${uris.size} documents").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                val launcherContext: Context = hostActivity ?: context
+                val chooser = Intent.createChooser(sendIntent, "Share ${uris.size} documents").apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (launcherContext !is Activity) {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                }
+                launcherContext.startActivity(chooser)
             }.onFailure { err ->
-                _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to share selected files") }
+                val msg = if (err is ActivityNotFoundException) {
+                    "No sharing app found. Use 'Save to Downloads' instead."
+                } else {
+                    err.localizedMessage ?: "Unable to share selected files"
+                }
+                _uiState.update { it.copy(statusMessage = msg) }
+            }
+        }
+    }
+
+    fun saveDocumentToDownloads(
+        doc: DocumentEntity,
+        onLegacyNeedSaf: (DocumentEntity, String) -> Unit = { _, _ -> }
+    ) {
+        val displayName = cleanPdfDisplayName(doc.title)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            onLegacyNeedSaf(doc, displayName)
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val srcFile = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
+                    require(srcFile.exists() && srcFile.length() > 0L) { "Document file not found" }
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, displayName)
+                        put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                        put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/SmartPdfReader")
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    val resolver = context.contentResolver
+                    val targetUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: error("Unable to create file in Downloads")
+                    resolver.openOutputStream(targetUri)?.use { out ->
+                        srcFile.inputStream().use { input -> input.copyTo(out) }
+                    } ?: error("Unable to write to Downloads")
+                    values.clear()
+                    values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    resolver.update(targetUri, values, null, null)
+                }
+                _uiState.update { it.copy(statusMessage = "Saved $displayName to Downloads/SmartPdfReader") }
+            }.onFailure { err ->
+                _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to save to Downloads") }
+            }
+        }
+    }
+
+    fun writeDocumentToUri(doc: DocumentEntity, targetUri: Uri) {
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val srcFile = if (doc.isVaulted) repository.decryptVaultTempFile(doc) else File(doc.filePath)
+                    require(srcFile.exists() && srcFile.length() > 0L) { "Document file not found" }
+                    context.contentResolver.openOutputStream(targetUri)?.use { out ->
+                        srcFile.inputStream().use { input -> input.copyTo(out) }
+                    } ?: error("Unable to write to selected location")
+                }
+                _uiState.update { it.copy(statusMessage = "Saved ${cleanPdfDisplayName(doc.title)}") }
+            }.onFailure { err ->
+                _uiState.update { it.copy(statusMessage = err.localizedMessage ?: "Unable to save PDF") }
             }
         }
     }

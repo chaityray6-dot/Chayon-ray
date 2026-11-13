@@ -107,6 +107,7 @@ fun HomeScreen(
     onToggleStar: (DocumentEntity) -> Unit,
     onRenameDocument: (DocumentEntity, String) -> Unit,
     onShareDocument: (DocumentEntity) -> Unit,
+    onSaveToDevice: (DocumentEntity) -> Unit = {},
     onMoveToVault: (DocumentEntity) -> Unit,
     onDeleteDocument: (DocumentEntity) -> Unit,
     onOpenScanner: () -> Unit,
@@ -526,6 +527,7 @@ fun HomeScreen(
             onOpenReader = { onOpenDocument(doc) },
             onOpenEditor = { onEditDocument(doc) },
             onShare = { onShareDocument(doc) },
+            onSaveToDevice = { onSaveToDevice(doc) },
             onRename = { newTitle -> onRenameDocument(doc, newTitle) },
             onToggleVault = { onMoveToVault(doc) },
             onDelete = { onDeleteDocument(doc) }

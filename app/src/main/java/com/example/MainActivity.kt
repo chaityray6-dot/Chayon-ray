@@ -315,6 +315,22 @@ private fun DocuVerseRootShell(
         }
     }
 
+    var pendingSafExportDoc by remember { mutableStateOf<com.example.data.local.DocumentEntity?>(null) }
+    val safExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        val doc = pendingSafExportDoc
+        pendingSafExportDoc = null
+        if (uri != null && doc != null) {
+            libraryVm.writeDocumentToUri(doc, uri)
+        }
+    }
+
+    fun triggerSaveToDownloads(doc: com.example.data.local.DocumentEntity) {
+        libraryVm.saveDocumentToDownloads(doc) { legacyDoc, suggestedName ->
+            pendingSafExportDoc = legacyDoc
+            safExporter.launch(suggestedName)
+        }
+    }
+
     val folderImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching {
@@ -492,7 +508,8 @@ private fun DocuVerseRootShell(
                             onEditDocument = { doc -> navController.navigate(EditorRoute(doc.id)) },
                             onToggleStar = { libraryVm.toggleStar(it) },
                             onRenameDocument = { d, title -> libraryVm.renameDocument(d, title) },
-                            onShareDocument = { libraryVm.shareDocument(it) },
+                            onShareDocument = { libraryVm.shareDocument(it, activity) },
+                            onSaveToDevice = { triggerSaveToDownloads(it) },
                             onMoveToVault = { libraryVm.moveToVault(it) },
                             onDeleteDocument = { libraryVm.deleteDocument(it) },
                             onOpenScanner = { navController.navigate(ScannerRoute) },
@@ -546,7 +563,8 @@ private fun DocuVerseRootShell(
                             onEditDocument = { doc -> navController.navigate(EditorRoute(doc.id)) },
                             onToggleStar = { libraryVm.toggleStar(it) },
                             onRenameDocument = { d, title -> libraryVm.renameDocument(d, title) },
-                            onShareDocument = { libraryVm.shareDocument(it) },
+                            onShareDocument = { libraryVm.shareDocument(it, activity) },
+                            onSaveToDevice = { triggerSaveToDownloads(it) },
                             onToggleVault = { doc ->
                                 if (doc.isVaulted) libraryVm.restoreFromVault(doc)
                                 else libraryVm.moveToVault(doc)
@@ -562,7 +580,7 @@ private fun DocuVerseRootShell(
                                     }
                                 }
                             },
-                            onShareSelected = { libraryVm.shareDocuments(it) },
+                            onShareSelected = { libraryVm.shareDocuments(it, activity) },
                             onStarSelected = { docs, starred -> libraryVm.setStarredForDocuments(docs, starred) },
                             onDeleteSelected = { libraryVm.deleteDocuments(it) }
                         )
@@ -676,7 +694,7 @@ private fun DocuVerseRootShell(
                                     }
                                 }
                             },
-                            onShareDocument = { libraryVm.shareDocument(it) }
+                            onShareDocument = { libraryVm.shareDocument(it, activity) }
                         )
                     }
 
@@ -692,7 +710,7 @@ private fun DocuVerseRootShell(
                                     }
                                 }
                             },
-                            onShareDocument = { libraryVm.shareDocument(it) }
+                            onShareDocument = { libraryVm.shareDocument(it, activity) }
                         )
                     }
 
@@ -705,7 +723,7 @@ private fun DocuVerseRootShell(
                                     navController.navigate(ReaderRoute(doc.id))
                                 }
                             },
-                            onShareDocument = { libraryVm.shareDocument(it) }
+                            onShareDocument = { libraryVm.shareDocument(it, activity) }
                         )
                     }
 
@@ -795,7 +813,8 @@ private fun DocuVerseRootShell(
                             onEditDocument = { doc -> navController.navigate(EditorRoute(doc.id)) },
                             onToggleStar = { libraryVm.toggleStar(it) },
                             onRenameDocument = { d, title -> libraryVm.renameDocument(d, title) },
-                            onShareDocument = { libraryVm.shareDocument(it) },
+                            onShareDocument = { libraryVm.shareDocument(it, activity) },
+                            onSaveToDevice = { triggerSaveToDownloads(it) },
                             onMoveToVault = { libraryVm.moveToVault(it) },
                             onDeleteDocument = { libraryVm.deleteDocument(it) }
                         )
