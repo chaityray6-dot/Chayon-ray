@@ -82,6 +82,7 @@ import com.example.ui.navigation.AiRoute
 import com.example.ui.navigation.CompressSecurityRoute
 import com.example.ui.navigation.DocumentsSearchRoute
 import com.example.ui.navigation.EditorRoute
+import com.example.ui.navigation.EnhancePdfRoute
 import com.example.ui.navigation.FilesRoute
 import com.example.ui.navigation.HomeRoute
 import com.example.ui.navigation.ImageToPdfRoute
@@ -103,6 +104,7 @@ import com.example.ui.screens.PdfReaderScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.ToolsScreen
 import com.example.ui.screens.tools.CompressSecurityScreen
+import com.example.ui.screens.tools.EnhancePdfScreen
 import com.example.ui.screens.tools.ImageToPdfScreen
 import com.example.ui.screens.tools.MergeSplitOrganizeScreen
 import com.example.ui.screens.tools.OcrToolScreen
@@ -568,8 +570,13 @@ private fun DocuVerseRootShell(
 
                     composable<ToolsRoute> {
                         ToolsScreen(
+                            documents = allDocs,
                             onOpenScanner = { navController.navigate(ScannerRoute) },
                             onOpenImageToPdf = { navController.navigate(ImageToPdfRoute) },
+                            onOpenEnhancePdf = { navController.navigate(EnhancePdfRoute) },
+                            onOpenDocInClearReader = { doc ->
+                                navController.navigate(ReaderRoute(doc.id, initialSharpen = true))
+                            },
                             onOpenOfficeConverter = { navController.navigate(OfficeConverterRoute) },
                             onOpenWebAndNotes = { navController.navigate(WebAndNotesToPdfRoute) },
                             onOpenMerge = { navController.navigate(MergeSplitOrganizeRoute("merge")) },
@@ -613,14 +620,15 @@ private fun DocuVerseRootShell(
                     composable<ReaderRoute> { backStackEntry ->
                         val args = backStackEntry.toRoute<ReaderRoute>()
                         val readerVm: ReaderViewModel = viewModel(
-                            key = "reader_${args.documentId}",
+                            key = "reader_${args.documentId}_${args.initialSharpen}",
                             factory = ReaderViewModel.Factory(
-                                args.documentId,
-                                args.initialPage,
-                                container.documentRepository,
-                                container.pdfEngine,
-                                container.preferencesRepository,
-                                container.ttsController
+                                documentId = args.documentId,
+                                initialPage = args.initialPage,
+                                initialSharpen = args.initialSharpen,
+                                repository = container.documentRepository,
+                                pdfEngine = container.pdfEngine,
+                                preferencesRepository = container.preferencesRepository,
+                                ttsController = container.ttsController
                             )
                         )
                         PdfReaderScreen(
@@ -667,7 +675,8 @@ private fun DocuVerseRootShell(
                                         popUpTo<ScannerRoute> { inclusive = true }
                                     }
                                 }
-                            }
+                            },
+                            onShareDocument = { libraryVm.shareDocument(it) }
                         )
                     }
 
@@ -682,7 +691,21 @@ private fun DocuVerseRootShell(
                                         popUpTo<ImageToPdfRoute> { inclusive = true }
                                     }
                                 }
-                            }
+                            },
+                            onShareDocument = { libraryVm.shareDocument(it) }
+                        )
+                    }
+
+                    composable<EnhancePdfRoute> {
+                        EnhancePdfScreen(
+                            viewModel = toolsVm,
+                            onBack = { navController.popBackStack() },
+                            onOpenReader = { doc ->
+                                AdMobManager.showInterstitialIfReady(activity) {
+                                    navController.navigate(ReaderRoute(doc.id))
+                                }
+                            },
+                            onShareDocument = { libraryVm.shareDocument(it) }
                         )
                     }
 

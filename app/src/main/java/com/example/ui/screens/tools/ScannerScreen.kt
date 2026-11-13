@@ -46,10 +46,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -99,7 +104,8 @@ import kotlin.math.hypot
 fun ScannerScreen(
     viewModel: ToolsViewModel,
     onBack: () -> Unit,
-    onSavedToReader: (DocumentEntity) -> Unit
+    onSavedToReader: (DocumentEntity) -> Unit,
+    onShareDocument: (DocumentEntity) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -125,6 +131,7 @@ fun ScannerScreen(
     var selectedPageIdx by remember { mutableIntStateOf(0) }
     var docTitle by remember { mutableStateOf("Scanned_Document") }
     var showCropEditor by remember { mutableStateOf(false) }
+    var generatedDoc by remember { mutableStateOf<DocumentEntity?>(null) }
 
     val imageCapture = remember { ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build() }
 
@@ -147,7 +154,11 @@ fun ScannerScreen(
                     Text("Smart Document Scanner", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     if (state.scannedPages.isNotEmpty()) {
                         Button(
-                            onClick = { viewModel.exportScannedPagesToPdf(docTitle, onSavedToReader) },
+                            onClick = {
+                                viewModel.exportScannedPagesToPdf(docTitle) { doc ->
+                                    generatedDoc = doc
+                                }
+                            },
                             enabled = !state.isBusy,
                             modifier = Modifier.testTag("scanner_export_pdf_btn")
                         ) {
@@ -275,6 +286,46 @@ fun ScannerScreen(
                     }
                 }
             } else {
+                generatedDoc?.let { created ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        shape = MaterialTheme.shapes.large,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .testTag("scanner_result_card")
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Saved \"${created.title}.pdf\"",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { onShareDocument(created) },
+                                    modifier = Modifier.weight(1f).testTag("scanner_share_result_btn")
+                                ) {
+                                    Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Share PDF")
+                                }
+                                OutlinedButton(
+                                    onClick = { onSavedToReader(created) },
+                                    modifier = Modifier.weight(1f).testTag("scanner_open_result_btn")
+                                ) {
+                                    Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Open PDF")
+                                }
+                            }
+                        }
+                    }
+                }
                 val safeIdx = selectedPageIdx.coerceIn(0, (state.scannedPages.size - 1).coerceAtLeast(0))
                 val activePage = state.scannedPages.getOrNull(safeIdx)
                 if (activePage == null) {
@@ -356,7 +407,7 @@ fun ScannerScreen(
                             }
                             Button(
                                 onClick = {
-                                    viewModel.updateScanPageSettings(safeIdx, quad, activePage.filter, activePage.brightness, activePage.contrast)
+                                    viewModel.updateScanPageSettings(safeIdx, quad, activePage.filter, activePage.brightness, activePage.contrast, activePage.sharpen)
                                     showCropEditor = false
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -394,18 +445,26 @@ fun ScannerScreen(
                                 FilterChip(
                                     selected = activePage.filter == mode,
                                     onClick = {
-                                        viewModel.updateScanPageSettings(safeIdx, activePage.quad, mode, activePage.brightness, activePage.contrast)
+                                        viewModel.updateScanPageSettings(safeIdx, activePage.quad, mode, activePage.brightness, activePage.contrast, activePage.sharpen)
                                     },
                                     label = { Text(mode.label) }
                                 )
                             }
                         }
 
+                        Text("Sharpen / Clarity: ${String.format(java.util.Locale.US, "%.2f", activePage.sharpen)}", style = MaterialTheme.typography.labelMedium)
+                        Slider(
+                            value = activePage.sharpen,
+                            onValueChange = { s ->
+                                viewModel.updateScanPageSettings(safeIdx, activePage.quad, activePage.filter, activePage.brightness, activePage.contrast, s)
+                            },
+                            valueRange = 0f..1.5f
+                        )
                         Text("Brightness: ${activePage.brightness.toInt()}", style = MaterialTheme.typography.labelMedium)
                         Slider(
                             value = activePage.brightness,
                             onValueChange = { b ->
-                                viewModel.updateScanPageSettings(safeIdx, activePage.quad, activePage.filter, b, activePage.contrast)
+                                viewModel.updateScanPageSettings(safeIdx, activePage.quad, activePage.filter, b, activePage.contrast, activePage.sharpen)
                             },
                             valueRange = -60f..60f
                         )
@@ -413,7 +472,7 @@ fun ScannerScreen(
                         Slider(
                             value = activePage.contrast,
                             onValueChange = { c ->
-                                viewModel.updateScanPageSettings(safeIdx, activePage.quad, activePage.filter, activePage.brightness, c)
+                                viewModel.updateScanPageSettings(safeIdx, activePage.quad, activePage.filter, activePage.brightness, c, activePage.sharpen)
                             },
                             valueRange = 0.6f..1.8f
                         )

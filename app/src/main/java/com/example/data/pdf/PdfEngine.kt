@@ -69,6 +69,16 @@ data class AcroFormFieldInfo(
     val isReadOnly: Boolean
 )
 
+data class ImagePageSpec(
+    val uri: Uri,
+    val leftNorm: Float = 0f,
+    val topNorm: Float = 0f,
+    val rightNorm: Float = 1f,
+    val bottomNorm: Float = 1f,
+    val rotationDegrees: Int = 0,
+    val enhanceClearText: Boolean = false
+)
+
 class PdfEngine(private val context: Context) {
 
     private val renderMutex = Mutex()
@@ -256,6 +266,20 @@ class PdfEngine(private val context: Context) {
         pageSize: PageSizePreset,
         landscape: Boolean,
         marginPt: Float
+    ): File = imagesToPdfWithSpecs(
+        specs = imageUris.map { ImagePageSpec(uri = it) },
+        outputFile = outputFile,
+        pageSize = pageSize,
+        landscape = landscape,
+        marginPt = marginPt
+    )
+
+    suspend fun imagesToPdfWithSpecs(
+        specs: List<ImagePageSpec>,
+        outputFile: File,
+        pageSize: PageSizePreset,
+        landscape: Boolean,
+        marginPt: Float
     ): File = withContext(Dispatchers.IO) {
         outputFile.parentFile?.mkdirs()
         PDDocument().use { doc ->
@@ -264,24 +288,94 @@ class PdfEngine(private val context: Context) {
             } else {
                 PDRectangle(pageSize.widthPt, pageSize.heightPt)
             }
-            for (uri in imageUris) {
-                val bitmap = decodeSampledBitmap(uri, 2000, 2600) ?: continue
+            for (spec in specs) {
+                val decoded = decodeSampledBitmap(spec.uri, 2000, 2600) ?: continue
+                val needsCropOrRotate = spec.rotationDegrees % 360 != 0 ||
+                    spec.leftNorm > 0.01f || spec.topNorm > 0.01f ||
+                    spec.rightNorm < 0.99f || spec.bottomNorm < 0.99f
+                val cropped = if (needsCropOrRotate) {
+                    val c = ScannerImageProcessor.cropAndRotateBitmap(
+                        source = decoded,
+                        leftNorm = spec.leftNorm,
+                        topNorm = spec.topNorm,
+                        rightNorm = spec.rightNorm,
+                        bottomNorm = spec.bottomNorm,
+                        rotationDegrees = spec.rotationDegrees
+                    )
+                    if (c !== decoded) decoded.recycle()
+                    c
+                } else {
+                    decoded
+                }
+                val finalBmp = if (spec.enhanceClearText) {
+                    val sharpened = ScannerImageProcessor.applyEnhancement(
+                        source = cropped,
+                        filter = ScanFilterMode.CLEAR_TEXT,
+                        sharpen = 0.95f
+                    )
+                    if (sharpened !== cropped) cropped.recycle()
+                    sharpened
+                } else {
+                    cropped
+                }
+
                 val page = PDPage(rect)
                 doc.addPage(page)
-                val pdImage = JPEGFactory.createFromImage(doc, bitmap, 0.88f)
+                val pdImage = JPEGFactory.createFromImage(doc, finalBmp, 0.90f)
                 val availW = (rect.width - marginPt * 2).coerceAtLeast(40f)
                 val availH = (rect.height - marginPt * 2).coerceAtLeast(40f)
-                val scale = minOf(availW / bitmap.width, availH / bitmap.height)
-                val drawW = bitmap.width * scale
-                val drawH = bitmap.height * scale
+                val scale = minOf(availW / finalBmp.width, availH / finalBmp.height)
+                val drawW = finalBmp.width * scale
+                val drawH = finalBmp.height * scale
                 val x = (rect.width - drawW) / 2f
                 val y = (rect.height - drawH) / 2f
                 PDPageContentStream(doc, page).use { cs ->
                     cs.drawImage(pdImage, x, y, drawW, drawH)
                 }
-                bitmap.recycle()
+                finalBmp.recycle()
             }
             doc.save(outputFile)
+        }
+        outputFile
+    }
+
+    suspend fun enhancePdfPages(
+        inputFile: File,
+        outputFile: File,
+        filter: ScanFilterMode = ScanFilterMode.CLEAR_TEXT,
+        brightness: Float = 0f,
+        contrast: Float = 1.15f,
+        sharpen: Float = 0.95f,
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
+    ): File = withContext(Dispatchers.IO) {
+        outputFile.parentFile?.mkdirs()
+        PDDocument.load(inputFile).use { src ->
+            val renderer = PdfBoxRenderer(src)
+            val total = src.numberOfPages.coerceAtLeast(1)
+            PDDocument().use { dest ->
+                for (i in 0 until src.numberOfPages) {
+                    onProgress(i + 1, total)
+                    val origRect = src.getPage(i).mediaBox
+                    val scale = (1550f / origRect.width.coerceAtLeast(1f)).coerceIn(1.2f, 2.8f)
+                    val rawBmp = renderer.renderImage(i, scale)
+                    val enhancedBmp = ScannerImageProcessor.applyEnhancement(
+                        source = rawBmp,
+                        filter = filter,
+                        brightness = brightness,
+                        contrast = contrast,
+                        sharpen = sharpen
+                    )
+                    if (enhancedBmp !== rawBmp) rawBmp.recycle()
+                    val page = PDPage(origRect)
+                    dest.addPage(page)
+                    val pdImg = JPEGFactory.createFromImage(dest, enhancedBmp, 0.90f)
+                    enhancedBmp.recycle()
+                    PDPageContentStream(dest, page).use { cs ->
+                        cs.drawImage(pdImg, 0f, 0f, origRect.width, origRect.height)
+                    }
+                }
+                dest.save(outputFile)
+            }
         }
         outputFile
     }

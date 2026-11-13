@@ -12,10 +12,12 @@ import com.example.data.local.ReaderBackgroundMode
 import com.example.data.local.ReflowAlignment
 import com.example.data.pdf.PdfEngine
 import com.example.data.pdf.PdfSearchMatch
+import com.example.data.pdf.ScannerImageProcessor
 import com.example.data.pdf.TocEntry
 import com.example.data.repository.DocumentRepository
 import com.example.data.tts.TtsController
 import com.example.data.tts.TtsUiState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class ReaderUiState(
@@ -48,6 +51,8 @@ data class ReaderUiState(
     val searchMatches: List<PdfSearchMatch> = emptyList(),
     val activeMatchIndex: Int = 0,
     val recentlyViewedPages: List<Int> = emptyList(),
+    val isSharpenEnabled: Boolean = false,
+    val sharpenLevel: Float = 0.85f,
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -55,13 +60,14 @@ data class ReaderUiState(
 class ReaderViewModel(
     private val documentId: Long,
     private val initialPage: Int,
+    private val initialSharpen: Boolean = false,
     private val repository: DocumentRepository,
     private val pdfEngine: PdfEngine,
     private val preferencesRepository: PreferencesRepository,
     val ttsController: TtsController
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ReaderUiState())
+    private val _uiState = MutableStateFlow(ReaderUiState(isSharpenEnabled = initialSharpen))
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     val bookmarks: StateFlow<List<BookmarkEntity>> = repository.observeBookmarks(documentId)
@@ -166,10 +172,20 @@ class ReaderViewModel(
         }
     }
 
-    suspend fun renderPageBitmap(pageIndex: Int, widthPx: Int = 1080): Bitmap? {
+    suspend fun renderPageBitmap(
+        pageIndex: Int,
+        widthPx: Int = 1080,
+        applySharpen: Boolean = false,
+        sharpenStrength: Float = 0.85f
+    ): Bitmap? {
         val state = _uiState.value
         val file = state.activeFile ?: return null
-        return pdfEngine.renderPage(file, pageIndex, widthPx, state.activePassword.ifEmpty { null })
+        val raw = pdfEngine.renderPage(file, pageIndex, widthPx, state.activePassword.ifEmpty { null })
+            ?: return null
+        if (!applySharpen || sharpenStrength <= 0.02f) return raw
+        return withContext(Dispatchers.Default) {
+            ScannerImageProcessor.applySharpenAndClarity(raw, sharpenStrength, denoise = true)
+        }
     }
 
     fun goToPage(pageIndex: Int) {
@@ -230,6 +246,14 @@ class ReaderViewModel(
         _uiState.update { it.copy(isFullScreen = !it.isFullScreen) }
     }
 
+    fun toggleSharpenMode() {
+        _uiState.update { it.copy(isSharpenEnabled = !it.isSharpenEnabled) }
+    }
+
+    fun setSharpenLevel(level: Float) {
+        _uiState.update { it.copy(sharpenLevel = level.coerceIn(0.15f, 1.5f)) }
+    }
+
     fun toggleBookmarkCurrentPage() {
         val state = _uiState.value
         val doc = state.document ?: return
@@ -270,6 +294,7 @@ class ReaderViewModel(
     class Factory(
         private val documentId: Long,
         private val initialPage: Int,
+        private val initialSharpen: Boolean = false,
         private val repository: DocumentRepository,
         private val pdfEngine: PdfEngine,
         private val preferencesRepository: PreferencesRepository,
@@ -277,6 +302,6 @@ class ReaderViewModel(
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ReaderViewModel(documentId, initialPage, repository, pdfEngine, preferencesRepository, ttsController) as T
+            ReaderViewModel(documentId, initialPage, initialSharpen, repository, pdfEngine, preferencesRepository, ttsController) as T
     }
 }

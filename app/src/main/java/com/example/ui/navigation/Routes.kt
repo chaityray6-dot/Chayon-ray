@@ -18,7 +18,7 @@ data object AiRoute
 data object SettingsRoute
 
 @Serializable
-data class ReaderRoute(val documentId: Long, val initialPage: Int = 0)
+data class ReaderRoute(val documentId: Long, val initialPage: Int = 0, val initialSharpen: Boolean = false)
 
 @Serializable
 data class EditorRoute(val documentId: Long, val initialPage: Int = 0)
@@ -28,6 +28,9 @@ data object ScannerRoute
 
 @Serializable
 data object ImageToPdfRoute
+
+@Serializable
+data object EnhancePdfRoute
 
 @Serializable
 data object OfficeConverterRoute

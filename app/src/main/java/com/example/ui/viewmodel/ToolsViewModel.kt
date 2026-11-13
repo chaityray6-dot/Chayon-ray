@@ -12,6 +12,7 @@ import com.example.data.local.DocumentType
 import com.example.data.ocr.OcrEngine
 import com.example.data.ocr.OcrLanguage
 import com.example.data.pdf.CompressionLevel
+import com.example.data.pdf.ImagePageSpec
 import com.example.data.pdf.PageSizePreset
 import com.example.data.pdf.PdfEngine
 import com.example.data.pdf.ScanFilterMode
@@ -37,7 +38,8 @@ data class ScannedPageItem(
     val quad: ScanQuad = ScanQuad(),
     val filter: ScanFilterMode = ScanFilterMode.MAGIC_COLOR,
     val brightness: Float = 0f,
-    val contrast: Float = 1f
+    val contrast: Float = 1f,
+    val sharpen: Float = 0.45f
 )
 
 data class OrganizerPageItem(
@@ -63,6 +65,11 @@ data class ToolsUiState(
     val ocrExtractedText: String = "",
     val ocrNote: String? = null,
     val ocrPreviewBitmap: Bitmap? = null,
+    // Blurry PDF Enhancer
+    val enhanceProgress: Pair<Int, Int>? = null,
+    val enhancePreviewBefore: Bitmap? = null,
+    val enhancePreviewAfter: Bitmap? = null,
+    val isEnhancingPreview: Boolean = false,
     // Office Export path
     val lastExportedOfficeFile: File? = null
 )
@@ -89,12 +96,30 @@ class ToolsViewModel(
         marginPt: Float,
         onDone: (DocumentEntity) -> Unit
     ) {
-        if (uris.isEmpty()) return
+        createPdfFromImageSpecs(
+            specs = uris.map { ImagePageSpec(uri = it) },
+            outputTitle = outputTitle,
+            pageSize = pageSize,
+            landscape = landscape,
+            marginPt = marginPt,
+            onDone = onDone
+        )
+    }
+
+    fun createPdfFromImageSpecs(
+        specs: List<ImagePageSpec>,
+        outputTitle: String,
+        pageSize: PageSizePreset,
+        landscape: Boolean,
+        marginPt: Float,
+        onDone: (DocumentEntity) -> Unit
+    ) {
+        if (specs.isEmpty()) return
         viewModelScope.launch {
             _uiState.update { it.copy(isBusy = true, statusMessage = null) }
             runCatching {
                 val outFile = repository.uniqueFileIn(repository.documentsDir, "${outputTitle.ifBlank { "Images_Document" }}.pdf")
-                pdfEngine.imagesToPdf(uris, outFile, pageSize, landscape, marginPt)
+                pdfEngine.imagesToPdfWithSpecs(specs, outFile, pageSize, landscape, marginPt)
                 val doc = repository.registerPdfFile(outFile, outFile.nameWithoutExtension, DocumentType.PDF)
                 _uiState.update { it.copy(isBusy = false, lastCreatedDocument = doc, statusMessage = "Created ${doc.title}.pdf") }
                 onDone(doc)
@@ -104,17 +129,27 @@ class ToolsViewModel(
         }
     }
 
+    suspend fun decodeImagePreviewBitmap(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
+        pdfEngine.decodeSampledBitmap(uri, 1080, 1440)
+    }
+
     // ---- SMART SCANNER ----
     fun addScannedBitmap(raw: Bitmap) {
         viewModelScope.launch(Dispatchers.Default) {
             val quad = ScannerImageProcessor.detectDocumentBounds(raw)
             val cropped = ScannerImageProcessor.applyPerspectiveCrop(raw, quad)
-            val enhanced = ScannerImageProcessor.applyEnhancement(cropped, ScanFilterMode.MAGIC_COLOR)
+            val defaultSharpen = 0.45f
+            val enhanced = ScannerImageProcessor.applyEnhancement(
+                source = cropped,
+                filter = ScanFilterMode.MAGIC_COLOR,
+                sharpen = defaultSharpen
+            )
             val item = ScannedPageItem(
                 originalBitmap = raw,
                 processedBitmap = enhanced,
                 quad = quad,
-                filter = ScanFilterMode.MAGIC_COLOR
+                filter = ScanFilterMode.MAGIC_COLOR,
+                sharpen = defaultSharpen
             )
             _uiState.update { it.copy(scannedPages = it.scannedPages + item) }
         }
@@ -125,12 +160,13 @@ class ToolsViewModel(
         quad: ScanQuad,
         filter: ScanFilterMode,
         brightness: Float,
-        contrast: Float
+        contrast: Float,
+        sharpen: Float
     ) {
         val current = _uiState.value.scannedPages.getOrNull(index) ?: return
         viewModelScope.launch(Dispatchers.Default) {
             val cropped = ScannerImageProcessor.applyPerspectiveCrop(current.originalBitmap, quad)
-            val enhanced = ScannerImageProcessor.applyEnhancement(cropped, filter, brightness, contrast)
+            val enhanced = ScannerImageProcessor.applyEnhancement(cropped, filter, brightness, contrast, sharpen)
             _uiState.update { state ->
                 val list = state.scannedPages.toMutableList()
                 if (index in list.indices) {
@@ -139,7 +175,8 @@ class ToolsViewModel(
                         quad = quad,
                         filter = filter,
                         brightness = brightness,
-                        contrast = contrast
+                        contrast = contrast,
+                        sharpen = sharpen
                     )
                 }
                 state.copy(scannedPages = list)
@@ -530,6 +567,105 @@ class ToolsViewModel(
             outFile.writeText(text)
             _uiState.update { it.copy(lastExportedOfficeFile = outFile, statusMessage = "Saved ${outFile.name}") }
         }
+    }
+
+    // ---- BLURRY PDF ENHANCER ----
+    fun loadEnhancePagePreview(
+        doc: DocumentEntity,
+        pageIndex: Int,
+        filter: ScanFilterMode,
+        brightness: Float,
+        contrast: Float,
+        sharpen: Float
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isEnhancingPreview = true) }
+            runCatching {
+                val raw = pdfEngine.renderPage(File(doc.filePath), pageIndex, 1080)
+                    ?: error("Unable to render preview page")
+                val enhanced = withContext(Dispatchers.Default) {
+                    ScannerImageProcessor.applyEnhancement(raw, filter, brightness, contrast, sharpen)
+                }
+                _uiState.update {
+                    it.copy(
+                        isEnhancingPreview = false,
+                        enhancePreviewBefore = raw,
+                        enhancePreviewAfter = enhanced
+                    )
+                }
+            }.onFailure { e ->
+                _uiState.update {
+                    it.copy(isEnhancingPreview = false, statusMessage = e.localizedMessage ?: "Preview failed")
+                }
+            }
+        }
+    }
+
+    fun enhanceEntirePdf(
+        doc: DocumentEntity,
+        outputTitle: String,
+        filter: ScanFilterMode,
+        brightness: Float,
+        contrast: Float,
+        sharpen: Float,
+        onDone: (DocumentEntity) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true, enhanceProgress = 0 to doc.pageCount.coerceAtLeast(1)) }
+            runCatching {
+                val cleanName = outputTitle.ifBlank { "${doc.title}_Clear" }
+                val outFile = repository.uniqueFileIn(repository.documentsDir, "$cleanName.pdf")
+                pdfEngine.enhancePdfPages(
+                    inputFile = File(doc.filePath),
+                    outputFile = outFile,
+                    filter = filter,
+                    brightness = brightness,
+                    contrast = contrast,
+                    sharpen = sharpen,
+                    onProgress = { current, total ->
+                        _uiState.update { it.copy(enhanceProgress = current to total) }
+                    }
+                )
+                val saved = repository.registerPdfFile(outFile, outFile.nameWithoutExtension, DocumentType.SCANNED_PDF)
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        enhanceProgress = null,
+                        lastCreatedDocument = saved,
+                        statusMessage = "Enhanced \"${saved.title}\" (${saved.pageCount} pages)"
+                    )
+                }
+                onDone(saved)
+            }.onFailure { e ->
+                _uiState.update {
+                    it.copy(
+                        isBusy = false,
+                        enhanceProgress = null,
+                        statusMessage = e.localizedMessage ?: "PDF enhancement failed"
+                    )
+                }
+            }
+        }
+    }
+
+    fun importAndEnhanceExternalPdf(
+        uri: Uri,
+        onImported: (DocumentEntity) -> Unit
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBusy = true) }
+            runCatching {
+                val imported = repository.importDocumentFromUri(uri)
+                _uiState.update { it.copy(isBusy = false, statusMessage = "Loaded \"${imported.title}\"") }
+                onImported(imported)
+            }.onFailure { e ->
+                _uiState.update { it.copy(isBusy = false, statusMessage = e.localizedMessage ?: "Failed to load PDF") }
+            }
+        }
+    }
+
+    fun clearLastCreatedDocument() {
+        _uiState.update { it.copy(lastCreatedDocument = null) }
     }
 
     fun clearStatusMessage() {

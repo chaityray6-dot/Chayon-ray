@@ -40,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Brightness6
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material3.Switch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -381,6 +383,8 @@ fun PdfReaderScreen(
                         }
                     }
                     else -> {
+                        val zoomTier = if (zoomScale > 1.6f) 2 else 1
+                        val baseWidth = if (zoomTier == 2) 1860 else 1080
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -412,7 +416,15 @@ fun PdfReaderScreen(
                                             PdfRenderedPageCard(
                                                 pageIndex = idx,
                                                 backgroundMode = state.backgroundMode,
-                                                renderPage = { viewModel.renderPageBitmap(idx, 1080) }
+                                                renderKey = Triple(zoomTier, state.isSharpenEnabled, state.sharpenLevel),
+                                                renderPage = {
+                                                    viewModel.renderPageBitmap(
+                                                        pageIndex = idx,
+                                                        widthPx = baseWidth,
+                                                        applySharpen = state.isSharpenEnabled,
+                                                        sharpenStrength = state.sharpenLevel
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -426,7 +438,15 @@ fun PdfReaderScreen(
                                         PdfRenderedPageCard(
                                             pageIndex = state.currentPage,
                                             backgroundMode = state.backgroundMode,
-                                            renderPage = { viewModel.renderPageBitmap(state.currentPage, 1200) },
+                                            renderKey = Triple(zoomTier, state.isSharpenEnabled, state.sharpenLevel),
+                                            renderPage = {
+                                                viewModel.renderPageBitmap(
+                                                    pageIndex = state.currentPage,
+                                                    widthPx = if (zoomTier == 2) 1960 else 1200,
+                                                    applySharpen = state.isSharpenEnabled,
+                                                    sharpenStrength = state.sharpenLevel
+                                                )
+                                            },
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                         Spacer(Modifier.height(10.dp))
@@ -460,7 +480,15 @@ fun PdfReaderScreen(
                                             PdfRenderedPageCard(
                                                 pageIndex = idx,
                                                 backgroundMode = state.backgroundMode,
-                                                renderPage = { viewModel.renderPageBitmap(idx, 1200) }
+                                                renderKey = Triple(zoomTier, state.isSharpenEnabled, state.sharpenLevel),
+                                                renderPage = {
+                                                    viewModel.renderPageBitmap(
+                                                        pageIndex = idx,
+                                                        widthPx = if (zoomTier == 2) 1960 else 1200,
+                                                        applySharpen = state.isSharpenEnabled,
+                                                        sharpenStrength = state.sharpenLevel
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -485,14 +513,30 @@ fun PdfReaderScreen(
                                             PdfRenderedPageCard(
                                                 pageIndex = leftIdx,
                                                 backgroundMode = state.backgroundMode,
-                                                renderPage = { viewModel.renderPageBitmap(leftIdx, 720) },
+                                                renderKey = Triple(zoomTier, state.isSharpenEnabled, state.sharpenLevel),
+                                                renderPage = {
+                                                    viewModel.renderPageBitmap(
+                                                        pageIndex = leftIdx,
+                                                        widthPx = if (zoomTier == 2) 1280 else 720,
+                                                        applySharpen = state.isSharpenEnabled,
+                                                        sharpenStrength = state.sharpenLevel
+                                                    )
+                                                },
                                                 modifier = Modifier.weight(1f)
                                             )
                                             if (rightIdx < state.pageCount) {
                                                 PdfRenderedPageCard(
                                                     pageIndex = rightIdx,
                                                     backgroundMode = state.backgroundMode,
-                                                    renderPage = { viewModel.renderPageBitmap(rightIdx, 720) },
+                                                    renderKey = Triple(zoomTier, state.isSharpenEnabled, state.sharpenLevel),
+                                                    renderPage = {
+                                                        viewModel.renderPageBitmap(
+                                                            pageIndex = rightIdx,
+                                                            widthPx = if (zoomTier == 2) 1280 else 720,
+                                                            applySharpen = state.isSharpenEnabled,
+                                                            sharpenStrength = state.sharpenLevel
+                                                        )
+                                                    },
                                                     modifier = Modifier.weight(1f)
                                                 )
                                             } else {
@@ -601,6 +645,13 @@ fun PdfReaderScreen(
                                     Icons.Filled.TextFields,
                                     contentDescription = "Text Reflow",
                                     tint = if (state.isReflowMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            IconButton(onClick = { viewModel.toggleSharpenMode() }, modifier = Modifier.testTag("reader_sharpen_btn")) {
+                                Icon(
+                                    Icons.Filled.AutoFixHigh,
+                                    contentDescription = "Clear Blurry Text (Sharpen)",
+                                    tint = if (state.isSharpenEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                             IconButton(onClick = { showComfortSheet = true }, modifier = Modifier.testTag("reader_comfort_btn")) {
@@ -796,6 +847,36 @@ fun PdfReaderScreen(
                     onValueChange = { viewModel.setBrightness(it) },
                     valueRange = 0.08f..1f
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Clear Blurry Text (Sharpen)", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Sharpens soft scanned pages while reading",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = state.isSharpenEnabled,
+                        onCheckedChange = { viewModel.toggleSharpenMode() },
+                        modifier = Modifier.testTag("reader_comfort_sharpen_switch")
+                    )
+                }
+                if (state.isSharpenEnabled) {
+                    Text(
+                        "Sharpness Strength: ${String.format(Locale.US, "%.2f", state.sharpenLevel)}",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Slider(
+                        value = state.sharpenLevel,
+                        onValueChange = { viewModel.setSharpenLevel(it) },
+                        valueRange = 0.2f..1.5f
+                    )
+                }
                 if (state.isReflowMode) {
                     Text("Reflow Font Size: ${state.reflowFontSizeSp.toInt()} sp", style = MaterialTheme.typography.labelLarge)
                     Slider(
@@ -896,10 +977,11 @@ fun PdfReaderScreen(
 private fun PdfRenderedPageCard(
     pageIndex: Int,
     backgroundMode: ReaderBackgroundMode,
+    renderKey: Any,
     renderPage: suspend () -> Bitmap?,
     modifier: Modifier = Modifier
 ) {
-    val bitmap by produceState<Bitmap?>(initialValue = null, pageIndex) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, pageIndex, renderKey) {
         value = renderPage()
     }
     val tintOverlay = when (backgroundMode) {
